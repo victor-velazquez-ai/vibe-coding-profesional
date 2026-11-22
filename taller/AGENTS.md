@@ -17,6 +17,16 @@ Reclutadores de prueba: `sofia` / `sofia1234` (Meridian Logistics) y `marcus` / 
 - Dependencias con `uv add`, nunca `pip`.
 - Nada de `print`: usa el logger (JSON, con `request_id`).
 
+## GitHub
+- Ciclo: `gh issue view N` → rama `feat/…` → commits (los tests y el código, en commits separados) → `gh pr create` con la salida de `poe check` → `gh pr checks --watch`.
+- Si la CI falla: `gh run view <id> --log-failed`. Solo lo que falló, no el log entero.
+- Nunca `skip`, `xfail` ni cambiar tests para ponerla en verde. Si la falla no es de tu cambio, abre un issue con la evidencia y deja el PR como está.
+- `main` está protegida: nada se fusiona en rojo. `gh pr merge` pide aprobación.
+
+## Base de datos
+- Para mirar datos: `uv run poe psql-agente -c "SELECT …"` (rol `agente_lectura`, solo lectura). Nunca `docker exec` ni el usuario dueño de la base.
+- Los cambios de esquema van por Alembic, en un PR. Nunca `ALTER TABLE` a mano.
+
 ## Definición de terminado
 1. `uv run poe check` en verde. No corras las herramientas por separado: el único veredicto es `poe check`.
 2. **Pega en tu respuesta la salida real de `uv run poe check`** (las últimas líneas, tal cual). Sin la salida pegada, no está terminado.

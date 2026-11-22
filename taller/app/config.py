@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # Logs.
     log_level: str = "INFO"
 
+    # Identidades del agente en Postgres (S3). Las usan `poe roles` y `poe psql-agente`.
+    agente_lectura_password: str = ""
+    agente_metricas_password: str = ""
+
     @property
     def sqlalchemy_url(self) -> str:
         """URL que usa SQLAlchemy para la base de la app."""
