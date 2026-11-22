@@ -160,11 +160,18 @@ def _valores_conocidos(candidato: Candidato) -> list[tuple[str, str]]:
 
 
 def _quitar_valor(texto: str, valor: str, marca: str) -> tuple[str, int]:
-    """Sustituye un valor conocido, sin cortar palabras y sin importar mayúsculas.
+    """Sustituye un valor conocido por su marca, y dice cuántas veces."""
+    return _patron_de_valor(valor).subn(marca, texto)
+
+
+def _patron_de_valor(valor: str) -> re.Pattern[str]:
+    """**Cómo se reconoce** un valor de campo dentro del texto libre.
+
+    Está en una función sola porque es la decisión que la pasada de valores
+    conocidos toma, y toda ella: el resto de `_quitar_valor` es un `subn`.
 
     Los bordes se piden con `(?<!\\w)` y `(?!\\w)` y no con `\\b`, porque hay
     valores que empiezan por un carácter que no es de palabra —`+1 713 …`— y ahí
     `\\b` no casa nunca.
     """
-    patron = re.compile(rf"(?<!\w){re.escape(valor)}(?!\w)", re.IGNORECASE)
-    return patron.subn(marca, texto)
+    return re.compile(rf"(?<!\w){re.escape(valor)}(?!\w)", re.IGNORECASE)
