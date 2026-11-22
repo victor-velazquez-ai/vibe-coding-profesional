@@ -66,3 +66,13 @@ sequence = [
     { cmd = "python -m ruff format --check ." },
     { cmd = "python -m pytest" },
 ]
+
+# El arnes de evals del fit score, **siempre con el MOCK**: no sale del proceso, no
+# abre red, no gasta nada y tarda segundos. Lo que comprueba es que el camino de
+# produccion funciona de punta a punta, no la calidad del modelo (el MOCK devuelve
+# un score fijo). La calidad se mide a mano con `--proveedor claude`, que cuesta
+# dinero: la CI no lo corre (`docs/arquitectura.md` §2, D12) y por eso esta tarea no
+# entra en `check`. Como correrlo con el modelo real esta en `evals/README.md`.
+[tool.poe.tasks.evals]
+help = "arnes de evals del fit score con el proveedor MOCK (sin red, sin costo)"
+cmd = "python -m evals --proveedor mock --k 3"
