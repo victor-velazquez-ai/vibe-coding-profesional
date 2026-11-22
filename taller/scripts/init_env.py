@@ -14,6 +14,8 @@ TARGET = PROJECT_ROOT / ".env"
 GENERATED = {
     "SECRET_KEY": lambda: secrets.token_urlsafe(48),
     "POSTGRES_PASSWORD": lambda: secrets.token_urlsafe(24),
+    "AGENTE_LECTURA_PASSWORD": lambda: secrets.token_urlsafe(24),
+    "AGENTE_METRICAS_PASSWORD": lambda: secrets.token_urlsafe(24),
 }
 
 

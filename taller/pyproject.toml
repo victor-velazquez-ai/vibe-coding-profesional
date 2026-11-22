@@ -96,6 +96,14 @@ cmd = "python -m scripts.dev status"
 help = "Ultimas lineas de logs/app.log"
 cmd = "python -m scripts.dev logs"
 
+[tool.poe.tasks.roles]
+help = "Crea los roles del agente en Postgres (agente_lectura, agente_metricas)"
+cmd = "python -m scripts.roles"
+
+[tool.poe.tasks.psql-agente]
+help = "psql como agente_lectura (o --metricas). Ej.: poe psql-agente -c \"select 1\""
+cmd = "python -m scripts.psql_agente"
+
 [tool.poe.tasks.init-env]
 help = "Crea .env a partir de .env.example con un SECRET_KEY aleatorio"
 cmd = "python -m scripts.init_env"
