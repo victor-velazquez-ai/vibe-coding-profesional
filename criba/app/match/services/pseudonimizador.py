@@ -167,11 +167,15 @@ _PALABRAS_DE_LA_VIA = r"(?:[^\W\d_][\w'.\-]*\s+){0,4}"
 
 # Las **agrupaciones** de diez dígitos que se leen como teléfono. Diez dígitos es
 # lo que distingue un teléfono de un código postal o de un número de licencia, y
-# por eso las dos agrupaciones los piden todos: lo que cambia entre países es
-# dónde van los separadores, no cuántas cifras hay (§1a dice «teléfono», no
-# «teléfono en el formato de Texas»). La de 2-4-4 pide los separadores
-# **obligatorios** a propósito: sin eso, `\d{2,4}` tres veces casaría con ocho
-# dígitos y se llevaría cualquier número largo del CV (F1).
+# por eso las dos los piden todos: lo que cambia entre países es dónde van los
+# separadores, no cuántas cifras hay (§1a dice «teléfono», no «teléfono en el
+# formato de Texas»).
+#
+# Son dos agrupaciones enumeradas y no una regla elástica —«grupos de dos a cuatro
+# cifras»— a propósito: esa regla bajaría el mínimo a **ocho** dígitos y se
+# llevaría cualquier número largo del CV, que es el «quitar de más» de F1. Y la de
+# 2-4-4 pide los separadores **obligatorios** porque sin ellos son diez dígitos
+# seguidos, que es lo que la primera ya reconoce.
 _AGRUPACIONES_DE_TELEFONO = (
     r"\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}",  # 3-3-4, el de Estados Unidos
     r"\d{2}[\s.\-]\d{4}[\s.\-]\d{4}",  # 2-4-4, el de México
