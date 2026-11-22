@@ -139,6 +139,40 @@ más degrada el texto que decide el score (F1).
 | `corredor.py` | el camino de producción. El único módulo que importa de `app/` |
 | `__main__.py` | la línea de órdenes y el código de salida |
 
-Los tests de la **calificación** —que es la parte determinista— están en
-`tests/evals/` y corren en `poe check` con respuestas del proveedor **fabricadas a
-mano**: ninguno llama a un modelo, abre red, lanza el CLI ni toca la base de datos.
+## Qué está probado y qué solo está medido
+
+Los tests están en `tests/evals/` y **corren en `poe check`**: ninguno llama a un
+modelo, abre red, lanza el CLI ni toca la base de datos.
+
+| Archivo de test | Qué fija |
+|---|---|
+| `test_calificacion.py` | las cuatro dimensiones y los 12 casos del archivo, con respuestas **fabricadas a mano** |
+| `test_pass_k.py` | pass^1, pass^k y el total |
+| `test_bandas_del_camino.py` | `fuera_de_rango`, `error_del_camino` y el invariante sin gemelo |
+| `test_informe_de_salida.py` | la tabla de la terminal y el JSON guardado (y que no lleve CV ni respuestas) |
+| `test_corredor.py` | el camino de producción, el gemelo **por número de intento**, el error por intento, el costo y la traza |
+| `test_linea_de_ordenes.py` | el código de salida, `--k`, el informe en disco y el idioma de los casos |
+
+Los dos últimos doblan el CLI en su **costura** (`correr_cli`, la única puerta del
+proveedor: `tests/evals/doble_del_camino.py`), así que ejercen de verdad
+`pseudonimizar`, `proveedor_configurado`, `exigir_payload` e `interpretar`.
+
+**Lo que ningún test fija, porque no es determinista o cuesta dinero:** la calidad
+del modelo. Eso se mide a mano con `--proveedor claude` y queda en el cuerpo del PR
+(`docs/prs/evals-fit-score.md`).
+
+## Dos cosas que este directorio hace y conviene saber
+
+**El campo `critico` de `casos.json` no se lee.** Cinco casos lo llevan en `true` y
+**ningún módulo del arnés lo mira**: los doce se califican y se cuentan igual. Qué
+tendría que pasar con un crítico en rojo —tumbar la pasada, un código de salida
+propio, una sección aparte del informe— no lo dice el encargo y no se adivina.
+
+**`corredor.py` importa internos de Match y envuelve la costura del proveedor.**
+Las dos cosas son para no tener una segunda forma de puntuar, están explicadas en
+su docstring y la segunda la ejerce un test. La regla (b) de PR-04 (`PLAN.md` §2)
+rige «desde `app/` fuera de `app/match/`» y sus dos enumeraciones recorren solo la
+aplicación, así que `evals/` queda fuera **por naturaleza**; pero el plan nombra
+exentos por ruta a `migrations/` y `tests/` y no a este directorio. Está escalado
+en el cuerpo del PR: o se escribe la exención en el plan, o `evals/` entra en las
+dos enumeraciones.
