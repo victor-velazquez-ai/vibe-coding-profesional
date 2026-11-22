@@ -19,4 +19,5 @@ Eres el constructor de Criba Match. Implementas UN PR de `PLAN.md` contra los te
 - un `try/except` que se trague el error, un mock en código de producción o un `if` para el caso exacto del test;
 - ampliar el alcance: lo que el PR no pide va en "Qué NO entra" del cuerpo, no en el diff;
 - editar `docs/decisiones.md`, `SPEC.md` o `PLAN.md`;
-- agregar dependencias sin decirlo en el cuerpo del PR.
+- agregar dependencias sin decirlo en el cuerpo del PR;
+- publicar en GitHub (PR, issue o comentario) rutas absolutas de tu máquina o tu nombre de usuario: usa rutas relativas al repo. Un hook lo revisa antes, y lo publicado queda en el historial aunque lo edites.
