@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -40,10 +40,14 @@ def login(
 
 @app.get("/candidates", response_model=list[CandidateOut])
 def list_candidates(
+    stage: str | None = Query(default=None),
     db: Session = Depends(get_db),
     recruiter: Recruiter = Depends(get_current_recruiter),
 ) -> list[Candidate]:
-    return db.query(Candidate).filter(Candidate.company_id == recruiter.company_id).all()
+    query = db.query(Candidate).filter(Candidate.company_id == recruiter.company_id)
+    if stage is not None:
+        query = query.filter(Candidate.stage == stage)
+    return query.all()
 
 
 @app.post("/candidates", response_model=CandidateOut, status_code=status.HTTP_201_CREATED)
