@@ -32,7 +32,12 @@ RAZONES_DEL_MOCK = (
 class ProveedorMock:
     """Implementa `app.match.configuracion.Proveedor` sin salir del proceso."""
 
-    async def puntuar(self, payload: PayloadPseudonimizado, idioma: str) -> RespuestaDelProveedor:
+    async def puntuar(
+        self,
+        payload: PayloadPseudonimizado,
+        idioma: str,
+        descripcion_de_vacante: str = "",
+    ) -> RespuestaDelProveedor:
         """Exige la frontera **aunque no salga de la red** (PR-08, CA2).
 
         El MOCK no necesita el control para sí mismo: lo necesita para que el
@@ -40,6 +45,13 @@ class ProveedorMock:
         probado cuando ese cliente exista. Si el único que exigiera el tipo fuera
         el cliente real, la frontera nacería el día en que de verdad hay algo que
         perder (regla 1.5, F6).
+
+        **Recibe la descripción de la vacante y no la mira**, y eso es correcto
+        aquí: el MOCK devuelve un número fijo para que el E2E pueda asercir sobre
+        él, así que el par (candidato, vacante) no cambia nada de lo que
+        responde. Está en la firma porque el `Protocol` la declara —el
+        `MatchService` se la pasa a quien sea el proveedor de la pasada— y porque
+        lo contrario sería que el MOCK dejara de cumplirlo.
         """
         exigir_payload(payload)
         return RespuestaDelProveedor(SCORE_DEL_MOCK, RAZONES_DEL_MOCK, VERSION_DEL_MOCK)
