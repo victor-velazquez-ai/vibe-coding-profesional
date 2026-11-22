@@ -1,0 +1,4 @@
+Los informes del arnés (`*.json`) se escriben aquí y no se versionan: son la
+salida de una ejecución, con su fecha, su proveedor y su modelo dentro. El
+directorio sí se versiona, para que `python -m evals` no tenga que crearlo y para
+que esta nota esté donde alguien va a buscarla. Ver `evals/README.md`.
