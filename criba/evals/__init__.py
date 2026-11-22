@@ -10,9 +10,18 @@ inyección—, con pass^1 y pass^k por caso y un total.
 **Por qué vive en `evals/` y no en `app/` ni en `tests/`.** No es aplicación: no
 lo importa nada de `app/`. Y no es la suite: `poe check` corre `tests/`, y lo que
 este arnés mide con el proveedor real **cuesta dinero** y no es determinista, así
-que la CI no lo corre con el modelo real (`docs/arquitectura.md` §2, D12). Lo que
-sí vive en `tests/evals/` es la **calificación**, que es determinista: ahí se
-prueba con respuestas del proveedor fabricadas a mano.
+que la CI no lo corre con el modelo real (`docs/arquitectura.md` §2, D12).
+
+**Lo que de este arnés vive en `tests/evals/`, que es casi todo:** la
+**calificación** y el conteo pass^k con respuestas del proveedor **fabricadas a
+mano** (`test_calificacion.py`, `test_pass_k.py`, `test_bandas_del_camino.py`), las
+dos formas del informe (`test_informe_de_salida.py`), y el **corredor** y la
+**línea de órdenes** con la única puerta del proveedor doblada en su costura
+(`test_corredor.py`, `test_linea_de_ordenes.py`, `doble_del_camino.py`). Ninguno
+llama a un modelo, abre red, lanza el CLI ni toca la base de datos, así que los
+seis archivos corren en `poe check`. Lo que **no** se puede probar ahí es la
+calidad del modelo: eso es una medición con `--proveedor claude`, y está en el
+cuerpo del PR.
 
 **No hay dato de ninguna empresa aquí.** Los 12 casos son sintéticos y ficticios
 (correos en `example.com`), el arnés **no abre sesión, no consulta ninguna tabla y

@@ -35,6 +35,37 @@ repositorio y la activación por empresa (PR-10). Las tres necesitan base de dat
 `empresa_id`, y el arnés **no tiene empresa**: sus 12 casos son texto sintético
 (D4, CA1 — no hay nada que cruzar). Lo que esas piezas garantizan está probado
 donde ocurre, en `tests/match/`.
+
+**La licencia que este archivo se toma, escrita y no supuesta (hallazgo M2 de la
+revisión).** Dos cosas de aquí no las hace ningún otro módulo del repo fuera de
+`tests/`:
+
+- **importa internos de Match** (`services.pseudonimizador`, `proveedor.cliente`,
+  `configuracion`) en vez de la fachada. Es la consecuencia directa de la regla de
+  arriba: la fachada exporta `encolar`, `borrar_candidato`, `montar` y
+  `listar_vacante` —cuatro símbolos que necesitan sesión de base de datos,
+  `empresa_id` y cola—, y el arnés no tiene ninguna de las tres. Medir el camino
+  del proveedor por la fachada sería medir la cola de PR-06, no el score;
+- **envuelve la costura del proveedor** (`cliente.correr_cli`) mientras dura la
+  pasada, para leer el costo que el sobre del CLI reporta (ver `costo_observado`).
+
+Qué dice el plan, al pie de la letra: la **regla (b)** de PR-04 (`PLAN.md` §2) rige
+«desde `app/` fuera de `app/match/`», y los dos tests que la enumeran recorren
+`APP.rglob` y dicen en su docstring que son **«sobre la aplicación»**
+(`tests/match/test_aislamiento.py::test_desde_la_plataforma_el_unico_import_de_match_es_la_fachada`,
+`tests/match/test_cliente_proveedor.py::test_el_subproceso_del_proveedor_vive_en_un_solo_modulo_de_la_aplicacion`).
+`evals/` no es la aplicación —no lo importa nada de `app/`— así que la regla no lo
+alcanza; pero el plan solo nombra **`migrations/` y `tests/`** como exentos por
+ruta, y este directorio no está escrito en ninguna de las dos listas. **Esa
+omisión no se arregla desde aquí**: ampliar la enumeración es `tests/` y escribir
+la exención es `PLAN.md`, y ninguno de los dos es de este rol. Queda escalado en el
+cuerpo del PR con las dos salidas posibles.
+
+Lo que sí se puede acotar, y está acotado: este módulo **no lanza ningún proceso**
+—la única puerta sigue siendo `cliente.correr_cli`, y el envoltorio la llama—, no
+registra ni guarda ningún cuerpo, y la restauración va en un `finally`. Las tres
+condiciones las ejerce
+`tests/evals/test_corredor.py::test_el_observador_del_costo_no_altera_la_unica_puerta_ni_se_queda_con_cuerpos`.
 """
 
 from __future__ import annotations
@@ -239,9 +270,16 @@ def _calificar_intentos(
     modelo para que la diferencia sea atribuible al dato añadido y no a la varianza
     entre llamadas.
 
-    Si el gemelo falló en ese intento, el caso **no pasa** y el motivo lo nombra: el
-    invariante es de los criterios que `critico` marca en el archivo y no se puede
-    dar por bueno sin comprobarlo.
+    Si el gemelo falló en ese intento, el caso **no pasa** y el motivo lo nombra: un
+    invariante que no se pudo comprobar no se da por bueno, porque es la dimensión
+    que sostiene al arnés (fs-26, fs-28, fs-29).
+
+    **Y `critico` del archivo no entra en esta decisión, ni en ninguna otra** (M3):
+    cinco casos lo llevan en `casos.json` y **nada del arnés lee ese campo** —los
+    cinco se califican y se cuentan como los otros siete—. Qué tendría que hacer un
+    crítico en rojo (tumbar la pasada, un código de salida propio, una línea aparte
+    del informe) no lo dice el encargo, así que no se adivina: está en «Qué NO
+    entra» del cuerpo del PR, con su dueño.
     """
     respuestas = {(uno.caso_id, uno.numero): uno.respuesta for uno in intentos if uno.respuesta}
     errores = {(uno.caso_id, uno.numero): uno.error for uno in intentos if uno.error}
