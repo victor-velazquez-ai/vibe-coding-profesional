@@ -1,0 +1,22 @@
+{# El editor de CV de un candidato: el formulario que hasta ahora vivía dentro de
+   `_candidatos.html`, con el mismo marcado y la misma ruta de guardado.
+
+   Se extrae tal cual para poder pintarlo desde dos sitios sin duplicarlo. Guarda
+   contra `POST /candidatos/{id}/cv` —el gancho de PR-06, alcance 7 y CA9(a)— y
+   repinta la lista entera (`hx-target="#candidatos"`), así que la subida de CV
+   sigue siendo exactamente la de hoy.
+
+   Espera dos cosas en el contexto: `candidato` (con su `cv_texto`) y
+   `vacante_id`, que es la lista que se repinta al guardar. #}
+<form class="form" hx-post="/candidatos/{{ candidato.id }}/cv"
+      hx-target="#candidatos" hx-swap="outerHTML">
+  <input type="hidden" name="vacante_id" value="{{ vacante_id }}">
+  <div class="field">
+    <label class="field__label" for="cv-{{ candidato.id }}">
+      CV en texto
+    </label>
+    <textarea class="textarea" id="cv-{{ candidato.id }}" name="cv_texto"
+              required>{{ candidato.cv_texto or '' }}</textarea>
+  </div>
+  <button class="btn btn--primary btn--sm" type="submit">Guardar CV</button>
+</form>
