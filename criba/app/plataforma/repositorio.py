@@ -27,10 +27,38 @@ from app.plataforma.modelos import (
 
 
 @dataclass(frozen=True, slots=True)
+class CandidatoDeLista:
+    """Lo que la lista de la vacante pinta de un candidato. **Sin `cv_texto`.**
+
+    La lista nunca mostró el texto del CV: pinta su largo («1.086 caracteres») y
+    el texto solo servía para precargar un `<textarea>` por fila. Traerlo cuesta
+    10,5 ms de los 24,9 ms de la consulta de la lista y 542 KB del cuerpo con 500
+    filas (`perf/MEDICION.md` §5.1 medidas 2 y 3, §5.2; el cambio es el nº 1 de
+    §6). El texto se lee aparte, por `candidato()`, cuando la reclutadora abre el
+    editor.
+
+    Es un objeto propio y no un `Candidato` a medio cargar a propósito: así nadie
+    puede pedirle el CV por descuido —ni provocar una consulta por fila al
+    intentarlo— y el ahorro no depende de que la plantilla se acuerde.
+    """
+
+    id: int
+    nombre: str
+    correo: str
+    telefono: str
+    largo_cv: int
+
+    @property
+    def tiene_cv(self) -> bool:
+        """Con el largo basta: es lo único que la lista sabe del CV."""
+        return self.largo_cv > 0
+
+
+@dataclass(frozen=True, slots=True)
 class FilaCandidato:
     """Lo que la vista de vacante necesita de un candidato, sin filas crudas."""
 
-    candidato: Candidato
+    candidato: CandidatoDeLista
     postulacion: Postulacion
     notas: int
 
@@ -83,9 +111,23 @@ class RepositorioEmpresa:
 
         Una sola consulta, con el conteo de notas como subconsulta correlacionada:
         la plantilla no provoca una consulta por candidato.
+
+        Del candidato se traen **solo las columnas que la lista pinta**, y del CV
+        solo su largo (`perf/MEDICION.md` §6 nº 1): la columna `cv_texto` es el
+        10,5 ms y los 542 KB que §5.1 y §5.2 miden, y la lista nunca mostró el
+        texto. `length()` lo cuenta en Postgres —que ya tiene la fila— y lo que
+        cruza a Python es un entero por fila.
         """
         filas = self._s.execute(
-            select(Candidato, Postulacion, _conteo_notas())
+            select(
+                Candidato.id,
+                Candidato.nombre,
+                Candidato.correo,
+                Candidato.telefono,
+                func.coalesce(func.length(Candidato.cv_texto), 0),
+                Postulacion,
+                _conteo_notas(),
+            )
             .join(Postulacion, Postulacion.candidato_id == Candidato.id)
             .where(
                 Postulacion.empresa_id == self._empresa_id,
@@ -94,7 +136,20 @@ class RepositorioEmpresa:
             )
             .order_by(Postulacion.creada_en.desc(), Postulacion.id.desc())
         ).all()
-        return [FilaCandidato(candidato=c, postulacion=p, notas=n) for c, p, n in filas]
+        return [
+            FilaCandidato(
+                candidato=CandidatoDeLista(
+                    id=id_candidato,
+                    nombre=nombre,
+                    correo=correo,
+                    telefono=telefono,
+                    largo_cv=largo_cv,
+                ),
+                postulacion=postulacion,
+                notas=notas,
+            )
+            for id_candidato, nombre, correo, telefono, largo_cv, postulacion, notas in filas
+        ]
 
     def candidato(self, candidato_id: int) -> Candidato | None:
         return self._s.scalars(
