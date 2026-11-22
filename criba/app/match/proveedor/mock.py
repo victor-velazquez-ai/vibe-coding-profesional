@@ -15,6 +15,7 @@ siempre, para que el E2E de PR-07 pueda asercir sobre él.
 from __future__ import annotations
 
 from app.match.configuracion import RespuestaDelProveedor
+from app.match.proveedor.payload import PayloadPseudonimizado, exigir_payload
 
 SCORE_DEL_MOCK = 70
 VERSION_DEL_MOCK = "mock-1"
@@ -31,5 +32,14 @@ RAZONES_DEL_MOCK = (
 class ProveedorMock:
     """Implementa `app.match.configuracion.Proveedor` sin salir del proceso."""
 
-    async def puntuar(self, payload: object, idioma: str) -> RespuestaDelProveedor:
+    async def puntuar(self, payload: PayloadPseudonimizado, idioma: str) -> RespuestaDelProveedor:
+        """Exige la frontera **aunque no salga de la red** (PR-08, CA2).
+
+        El MOCK no necesita el control para sí mismo: lo necesita para que el
+        camino que el cliente real de PR-09 va a recorrer esté ya cerrado y
+        probado cuando ese cliente exista. Si el único que exigiera el tipo fuera
+        el cliente real, la frontera nacería el día en que de verdad hay algo que
+        perder (regla 1.5, F6).
+        """
+        exigir_payload(payload)
         return RespuestaDelProveedor(SCORE_DEL_MOCK, RAZONES_DEL_MOCK, VERSION_DEL_MOCK)

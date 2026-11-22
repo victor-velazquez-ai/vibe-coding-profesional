@@ -28,6 +28,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Protocol
 
+from app.match.proveedor.payload import PayloadPseudonimizado
+
 VARIABLE_GLOBAL = "CRIBA_MATCH_ACTIVO"
 VARIABLE_DE_EMPRESAS = "CRIBA_MATCH_EMPRESAS_ACTIVADAS"
 VARIABLE_DE_IDIOMA = "CRIBA_MATCH_IDIOMA_POR_OMISION"
@@ -52,12 +54,16 @@ class RespuestaDelProveedor:
 class Proveedor(Protocol):
     """Lo único que Match le pide a un proveedor de modelos.
 
-    `payload` es `object` **a propósito**: el tipo de la frontera llega en PR-08,
-    y estrecharlo ahí es la mitad del control de CA2 —«el cliente no acepta otra
-    cosa», `docs/arquitectura.md` §5.4—. Asíncrono porque ADR-001 lo exige (T5).
+    `payload` es un **`PayloadPseudonimizado`** desde PR-08, y eso es la mitad del
+    control de CA2: «el cliente del proveedor no acepta otra cosa que un payload
+    ya pseudonimizado» (`docs/arquitectura.md` §5.4). La otra mitad es el rechazo
+    en ejecución, `exigir_payload`, que toda implementación llama en su primera
+    línea: una anotación no es un control. Asíncrono porque ADR-001 lo exige (T5).
     """
 
-    async def puntuar(self, payload: object, idioma: str) -> RespuestaDelProveedor: ...
+    async def puntuar(
+        self, payload: PayloadPseudonimizado, idioma: str
+    ) -> RespuestaDelProveedor: ...
 
 
 @dataclass(frozen=True, slots=True)

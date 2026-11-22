@@ -2,11 +2,10 @@
 
 La versión mínima de la Etapa 0, con lo que **no** hace dicho en voz alta:
 
-- **no pseudonimiza**: el payload es el texto del CV tal cual, y eso solo es
-  aceptable porque el único proveedor que existe es el MOCK, que no sale del
-  proceso (regla 1.5). La frontera de tipos —un payload que el cliente del
-  proveedor no pueda construir sin pasar por el pseudonimizador— es **PR-08**, y
-  hasta entonces no se habilita ningún cliente real;
+- **no decide qué sale de Criba**: eso es de `services/pseudonimizador.py` desde
+  PR-08, y aquí queda una sola llamada (`_del_proveedor`). El payload es un
+  `PayloadPseudonimizado` que este servicio **no puede construir** (CA2,
+  `docs/arquitectura.md` §5.4);
 - **no escribe la fila de auditoría por score** (hash del CV, versión de prompt y
   de modelo): PR-12;
 - **no cuenta el gasto ni mira el techo**: PR-13;
