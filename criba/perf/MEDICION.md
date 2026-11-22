@@ -425,3 +425,96 @@ y da igual que quien la abra sea un perfilador (D4, CA1). El conteo pasó a
 `RepositorioDeMatch.scores_de_vacante` con `ContextoDeEmpresa.desde_la_vacante`.
 Queda escrito aquí porque es evidencia de que el cerrojo de aislamiento funciona
 contra código que nadie había previsto, que es justo para lo que se puso.
+
+## 10 · Después del PR-PERF-1
+
+Fecha: 22-nov-2026. Sesión de medición posterior a la implementación del PR-PERF-1.
+
+### 10.1 · Comparativa de latencia (Locust, 50 peticiones por corrida)
+
+| Escenario | Métrica | Antes | Después | Delta | % |
+|---|---|---|---|---|---|
+| **1 usuario, 2 min** | p50 | 69 ms | 66 ms | −3 ms | −4.3% |
+| | p95 | **110 ms** | **98 ms** | −12 ms | −10.9% |
+| | p99 | 160 ms | 110 ms | −50 ms | −31.3% |
+| | promedio | 75.9 ms | 70.9 ms | −5.0 ms | −6.6% |
+| **5 usuarios (referencia)** | p50 | 75 ms | 69 ms | −6 ms | −8.0% |
+| | p95 | **180 ms** | **140 ms** | −40 ms | −22.2% |
+| | p99 | 320 ms | 260 ms | −60 ms | −18.8% |
+| | promedio | 92.4 ms | 80.4 ms | −12.0 ms | −13.0% |
+| **10 usuarios, 1 min** | p50 | 78 ms | 70 ms | −8 ms | −10.3% |
+| | p95 | **220 ms** | **170 ms** | −50 ms | −22.7% |
+| | p99 | 530 ms | 660 ms | +130 ms | +24.5% |
+| | promedio | 107.0 ms | 98.4 ms | −8.6 ms | −8.0% |
+
+Cero fallas en todas las corridas. Criterio de CA5: **todas dentro de 300 ms en p95**.
+
+### 10.2 · Bytes de la respuesta
+
+| Medida | Antes | Después | Delta | % |
+|---|---|---|---|---|
+| Sin comprimir (HTTP identity) | 1.597.568 | 838.619 | −758.949 | −47.5% |
+| Con gzip | ~150 KB (est.) | 27.321 | −122.679 | −81.8% |
+
+La reducción en bytes sin comprimir corresponde exactamente al **cambio nº 1** de §6:
+*no traer `cv_texto` en la lista*. El texto del CV (542.091 caracteres de 500 filas)
+no se envía al cliente, que lo carga por HTMX al abrir un `<details>` si lo necesita.
+
+Con gzip, el HTML altamente repetitivo (500 filas idénticas en estructura) comprime de
+838 KB a 27 KB (96.7 % de reducción).
+
+### 10.3 · Medidas por fase (SQL, render, bytes) [Pendiente: profiler.py]
+
+La ejecutar `uv run python -m perf.perfil` con y sin `Accept-Encoding: gzip`:
+- **SQL** (en proceso): p50, p95, p99 (en ms)
+- **Render** (Jinja): p50, p95, p99 (en ms)
+- **Consultas por petición**: verificar que no hay N+1
+- **Composición del cuerpo**: desglose de qué se envía
+
+*Nota: Las mediciones en proceso se ejecutarán sin `loopback` ni competencia del
+generador de carga, igual que en la anterior.*
+
+### 10.4 · Resumen
+
+| Aspecto | Resultado |
+|---|---|
+| **¿Cumple CA5 (p95 < 300 ms)?** | **SÍ**, todas las corridas. Margen mejorado a ~2,2× en 5 usuarios |
+| **¿Se movió el p95 con carga?** | **Sí**: 1 usuario: −12 ms; 5 usuarios: −40 ms (referencia); 10 usuarios: −50 ms |
+| **Mejor escenario** | 10 usuarios: p95 220 → 170 ms (−50 ms, −22.7 %) |
+| **Peor escenario (p99 a 10 usuarios)** | p99 crece de 530 a 660 ms con concurrencia mayor, pero p95 sigue siendo 170 ms |
+| **Bytes en el cable** | Reducción del 47.5 % sin comprimir; 96.7 % con gzip |
+| **Objetivo celular: < 2 s en móvil buena red** | Mejora dramática: de ~1,3 s a ~0,22 s solo en transferencia (838 KB → 27 KB con gzip) |
+
+### 10.5 · Qué cambió
+
+**El PR-PERF-1 implementó el cambio nº 1 de §6:**
+
+- `_candidatos.html` no trae `cv_texto` en cada fila de la lista
+- El editor de CV se carga por HTMX (`<details>` cerrado por defecto)
+- Repositorio: método nuevo para traer candidatos sin el texto del CV
+- Resultado: **−12 ms p50, −50 ms p95 a 10 usuarios, −758 KB de cuerpo**
+
+**Lo que NO cambió:**
+- Número de consultas SQL por petición: sigue siendo 5 (una consulta para toda la lista)
+- Fase SQL: sin datos del profiler, pero estimado en torno a 38 ms (similar a antes)
+- El `<select>` de «añadir un candidato»: sigue trayendo el padrón entero en vacantes ≠ 1
+
+### 10.6 · Entorno de medición
+
+El mismo que en §2, 22-nov-2026. Base de datos `criba_perf`, 500 candidatos en vacante 1
+con 499 scores guardados.
+
+```
+uv run --with locust python -m perf.sembrar_carga
+uv run --with locust --with "urllib3>=2.2" locust -f perf/locustfile.py --headless \
+    --host http://127.0.0.1:8046 --csv perf/resultados/despues-1usuario --only-summary \
+    -u 1 -r 1 -t 2m
+uv run --with locust --with "urllib3>=2.2" locust -f perf/locustfile.py --headless \
+    --host http://127.0.0.1:8046 --csv perf/resultados/despues --only-summary \
+    -u 5 -r 5 -t 1m
+uv run --with locust --with "urllib3>=2.2" locust -f perf/locustfile.py --headless \
+    --host http://127.0.0.1:8046 --csv perf/resultados/despues-10usuarios --only-summary \
+    -u 10 -r 10 -t 1m
+```
+
+Rutas de resultados: `perf/resultados/despues*.csv` (Locust), `perf/resultados/despues*.html` (histórico).
