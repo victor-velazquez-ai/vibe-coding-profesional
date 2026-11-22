@@ -1,55 +1,39 @@
 """Adaptador del proveedor real, detrás de la frontera de PR-08 (PR-09, N4).
 
-**Qué proveedor, y por qué un subproceso** (N4, decisión de Víctor del 22-nov-2026,
-que `SPEC.md` §Privacidad deja en sus manos «dentro de esa restricción»): el modelo
-es Claude. En **este** repo del curso no hay clave de API, así que el cliente real
-es un adaptador que llama al CLI `claude -p` por subproceso, **sin herramientas y
-sin sesión**. En el proyecto real del cliente sería la API con su clave en una
-variable de entorno, nunca en el repo ni en la CI (F19). Lo que no cambia entre los
-dos: el **MOCK es el modo por omisión y el único que la CI usa**
-(`docs/arquitectura.md` §2).
+**Qué proveedor** (N4, decisión de Víctor del 22-nov-2026, que `SPEC.md`
+§Privacidad deja en sus manos «dentro de esa restricción»): el modelo es Claude.
+En **este** repo del curso no hay clave de API, así que el cliente real llama al
+CLI `claude -p` por subproceso, **sin herramientas y sin sesión**. En el proyecto
+real del cliente sería la API con su clave en una variable de entorno, nunca en el
+repo ni en la CI (F19). Lo que no cambia: el **MOCK es el modo por omisión y el
+único que la CI usa** (`docs/arquitectura.md` §2).
 
-Este módulo es **la única puerta por la que un CV sale del proceso**, y eso no es
-una observación de estilo: es lo que hace que los tres controles de este paso
-valgan algo. Detrás de esa puerta están el timeout (CA7, ADR-001), el tope de
-gasto por llamada (D12) y la prohibición de registrar cuerpos (F12). Un segundo
-`subprocess.run` en enero —«un script rápido para re-puntuar», el escenario literal
-de `docs/arquitectura.md` §5.4— no tendría ninguna de las tres, y por eso hay un
-test que enumera los lanzamientos de proceso de **toda** la aplicación.
+Este módulo es **la única puerta por la que un CV sale del proceso**, y eso es lo
+que hace que los tres controles del paso valgan algo: detrás de la puerta están el
+timeout (CA7, ADR-001), el tope de gasto por llamada (D12) y la prohibición de
+registrar cuerpos (F12). Un segundo `subprocess.run` en enero —«un script rápido
+para re-puntuar», el escenario literal de `docs/arquitectura.md` §5.4— no tendría
+ninguna de las tres, y por eso hay un test que enumera los lanzamientos de proceso
+de **toda** la aplicación.
 
-Las cuatro propiedades de la invocación, cada una con su razón:
+Cada propiedad de la invocación tiene su razón escrita donde se declara
+(`_argumentos`, `_entrada`, las constantes). La que manda sobre todas: **el CV
+viaja por la entrada estándar y nada de él aparece en `argv`**, que lo lee
+cualquier proceso de la máquina con `ps`, sale en los volcados y es lo que
+`subprocess.TimeoutExpired` lleva dentro al fallar.
 
-1. **el CV viaja por la entrada estándar.** `argv` lo lee cualquier proceso de la
-   máquina con `ps`, sale en los volcados y es lo que `subprocess.TimeoutExpired`
-   lleva dentro al fallar. Un CV en `argv` es F12 por una vía que ningún filtro de
-   log tapa, y D3 modificado autorizó la salida del CV bajo tres condiciones que
-   `ps` no cumple ninguna;
-2. **sin herramientas (`--tools ""`), sin sesión (`--no-session-persistence`), sin
-   ajustes de usuario (`--setting-sources ""`) y sin MCP ajeno
-   (`--strict-mcp-config`).** Las cuatro escribirían texto del CV **fuera de
-   Criba** —un archivo de sesión, lo que escriba una herramienta—, donde D15 no
-   llega y el inventario de borrado de CA16 no lo ve;
-3. **el modelo se pide por su versión fijada, no por su alias.** D15 y CA15 exigen
-   la versión de modelo en cada fila de auditoría (PR-12). El alias (`haiku`) se
-   resuelve hoy a una versión y mañana a otra, así que la fila de auditoría de
-   marzo diría una cosa y la llamada habría sido otra;
-4. **tope de gasto por llamada** (`--max-budget-usd`). D12 es un techo mensual de
-   toda la plataforma y lo cuenta PR-13; esto es el cinturón de la llamada suelta.
-
-**Ningún fallo sale crudo de aquí.** Lo que el subproceso levanta —`TimeoutExpired`
-y `CalledProcessError`— lleva dentro la línea de órdenes y la salida parcial del
-proceso, o sea el prompt y lo que el modelo había empezado a responder: si se
-propagara, cualquier `logging.exception` de arriba convertiría el fallo en la fuga
-de F12. Y quien decide qué hacer con el fallo es PR-11, cuya tabla de estados
-reparte por **causa** y no por el nombre de la excepción de la librería que la
-trajo.
+**Ningún fallo sale crudo de aquí.** Lo que el subproceso levanta lleva dentro la
+línea de órdenes y la salida parcial del proceso —el prompt y lo que el modelo
+había empezado a responder—, así que propagarlo convertiría cualquier
+`logging.exception` de arriba en la fuga de F12. Y quien decide qué hacer con el
+fallo es PR-11, cuya tabla de estados reparte por **causa** y no por el nombre de
+la excepción de la librería que la trajo.
 
 **Lo que este paso NO decide:** si un score de 120, cuatro razones o el idioma
-equivocado son «pendiente con reintento» o «sin score» (PR-11, su tabla de
-estados); qué se persiste de la versión de modelo y del prompt (PR-12); cuánto
-cuesta cada llamada y qué pasa al llegar al techo (PR-13); y el idioma real del
-usuario (PR-22, CA11). Aquí la respuesta se valida **de forma** —que haya un
-entero y una lista de textos— y se devuelve tal cual.
+equivocado son «pendiente con reintento» o «sin score» (PR-11); qué se persiste de
+la versión de modelo y del prompt (PR-12); cuánto cuesta cada llamada y qué pasa
+al llegar al techo (PR-13); y el idioma real del usuario (PR-22, CA11). Aquí la
+respuesta se valida **de forma** y se devuelve tal cual.
 """
 
 from __future__ import annotations
@@ -147,15 +131,14 @@ class RespuestaDelModelo(BaseModel):
     """La **forma** de la respuesta, y solo la forma.
 
     Dos usos y una sola fuente de verdad: valida lo que llega y genera el
-    `--json-schema` que se le pide al CLI. Si el esquema y la validación fueran
-    dos declaraciones distintas, el día que una cambie la otra se queda atrás.
+    `--json-schema` que se le pide al CLI. Si fueran dos declaraciones distintas,
+    el día que una cambie la otra se queda atrás.
 
     Lo que **no** valida, a propósito: que el score esté en 0-100, que las
     razones sean exactamente tres y que estén en el idioma pedido. Las tres son
-    de **PR-11**, que es quien decide si una respuesta así es «pendiente con
-    reintento» o «sin score con motivo» (su tabla de estados). Aquí solo se
-    distingue «esto no es una respuesta» de «esto es una respuesta», que es lo
-    que hace falta para no propagar un `KeyError` crudo hacia el bucle.
+    de **PR-11**. Aquí solo se distingue «esto no es una respuesta» de «esto es
+    una respuesta», que es lo que hace falta para no propagar un `KeyError`
+    crudo hacia el bucle.
     """
 
     score: int
@@ -425,13 +408,9 @@ class ProveedorClaudeCLI:
         `empresa_id`, decisión, latencia y versiones»— y lo que CA7 necesita para
         saber cuánto tarda el proveedor sin medirlo desde fuera. De los dos
         identificadores que esa lista nombra, este módulo **no tiene ninguno**, y
-        es a propósito: el adaptador recibe un cuerpo pseudonimizado y un idioma,
-        así que no sabe de qué empresa ni de qué candidato es (CA2). Quien los
-        tiene es el bucle, y es quien los registrará si alguna vez hace falta.
-
-        Ni el cuerpo enviado, ni la respuesta del modelo, ni el mensaje de la
-        excepción cruda: los tres son texto del CV o del modelo, y ninguno cabe
-        en un archivo de log (D15, F12, `docs/arquitectura.md` §5.5).
+        es a propósito: recibe un cuerpo pseudonimizado y un idioma, así que no
+        sabe de qué empresa ni de qué candidato es (CA2). Quien los tiene es el
+        bucle, y es quien los registrará si alguna vez hace falta.
         """
         _log.info(
             "proveedor=claude_cli decision=%s latencia_ms=%d modelo=%s",
