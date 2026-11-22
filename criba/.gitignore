@@ -9,3 +9,7 @@ __pycache__/
 # Los informes del arnes de evals: salida de una ejecucion, no codigo. El
 # directorio se versiona (evals/resultados/.gitkeep); su contenido no.
 evals/resultados/*.json
+# Los CSV de locust, por la misma razon y con la misma forma: el directorio se
+# versiona (perf/resultados/.gitkeep) y los numeros reales quedan pegados en
+# perf/MEDICION.md, que si se versiona.
+perf/resultados/*.csv
