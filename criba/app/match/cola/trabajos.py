@@ -12,10 +12,12 @@ Lo que `encolar` hace, y lo que todavía no:
   de empresa, así que un `empresa_id` de llamador es el que el siguiente omite o
   confunde (§4 de `docs/arquitectura.md`, D4);
 - escribe en **la transacción de la ruta** y no hace `commit()` (R6·I2);
-- **no comprueba la activación por empresa**: eso entra dentro de esta misma
-  función en PR-10, antes del `INSERT`, porque CA3 prohíbe «ningún registro de
-  Match» y no solo «ninguna llamada» (R2·M2, D7). Entre PR-06 y PR-10 no hay
-  fuga: el único proveedor es el MOCK y nada sale de Criba (regla 1.5);
+- **comprueba la activación por empresa antes del `INSERT`** (PR-10, R2·M2, D7):
+  CA3 prohíbe «ningún registro de Match» y no solo «ninguna llamada», así que la
+  comprobación no puede esperar a que el ejecutor tome la fila. La decide el
+  repositorio —`empresa_activada`, el punto único de acceso a datos—, no esta
+  función y no el gancho que la llama: los dos ganchos de PR-06 y el comando de
+  la carga (PR-16) entran por aquí y **ninguno trae regla propia**;
 - **no toma lease, no cuenta intentos y no reintenta**: PR-14.
 """
 
@@ -61,12 +63,26 @@ def encolar(bd: Session, vacante_id: int, candidato_id: int) -> TrabajoDeMatch |
     (R4·I1, R6·I5)— no toca la base de datos: ni una fila, ni una consulta. Eso
     es lo que hace que la regla 1.7 no dependa de la memoria de nadie entre el
     5-dic y la operación de PR-16.
+
+    Y `None` también **sin la activación por empresa** (D7, CA3): el `INSERT` no
+    se hace. Devolver `None` y no levantar una excepción es deliberado y es la
+    mitad de D7 que se lee mal: D7 apaga Match para Meridian, no a Meridian. Un
+    `encolar` que explotara convertiría CA3 en un 500 en la ruta de subida de CV
+    de las 39 empresas sin anexo, que siguen siendo clientes de Criba y siguen
+    subiendo CVs todos los días.
     """
     if not ajustes_match().activo:
         return None
 
     contexto = ContextoDeEmpresa.desde_la_vacante(bd, vacante_id, candidato_id=candidato_id)
     repo = RepositorioDeMatch(bd, contexto)
+    # D7 y CA3, **antes de cualquier escritura** (PR-10, R2·I2): quien decide es
+    # el repositorio y el contexto es el de la fila de la vacante, así que este
+    # camino no necesita cookie —el gancho de postulación no la tiene— y el
+    # `empresa_id` sobre el que se evalúa D7 no lo elige ningún llamador.
+    if not repo.empresa_activada():
+        return None
+
     candidato = repo.candidato(candidato_id)
     empresa = RepositorioEmpresa(bd, contexto.empresa_id).empresa()
     idioma = ajustes_match().idioma_de(empresa.slug if empresa is not None else "")
