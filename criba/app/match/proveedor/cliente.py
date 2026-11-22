@@ -101,6 +101,12 @@ CLAVES_DEL_SOBRE = ("is_error", "result", "structured_output", "modelUsage")
 
 CERCO = "```"
 
+# Con qué empieza un cuerpo JSON, y para qué sirve saberlo: un cerco puede traer
+# una **etiqueta de lenguaje** entre la apertura y el cuerpo (```json), y hay que
+# distinguirla del cuerpo sin suponer que viene un salto de línea detrás. Una
+# etiqueta nunca abre un objeto ni una lista, y un cuerpo siempre lo hace.
+APERTURAS_DE_JSON = ("{", "[")
+
 
 class ErrorDelProveedor(RuntimeError):
     """El proveedor no dio una respuesta usable. **Nunca lleva el CV dentro.**
@@ -282,13 +288,31 @@ def sin_cerco(salida: str) -> str:
     Aparece: el modelo envuelve su salida en un cerco de bloque de código aunque
     se le pida que no, y entonces lo que llega no es JSON por tres caracteres.
     Quitarlo **no** es tragarse un error: un cerco no es una anomalía de la
-    respuesta, es una forma de escribirla. Lo que viene dentro se valida igual.
+    respuesta, es una forma de escribirla. Lo que viene dentro se valida igual, y
+    si no es una respuesta sigue siendo un error tipado.
+
+    **Las cuatro formas en que llega, y ninguna supone un salto de línea**: con
+    etiqueta de lenguaje, sin etiqueta, en una sola línea y dentro del `result`
+    del sobre. La versión anterior partía por el primer `\\n` y devolvía cadena
+    vacía cuando no había ninguno, así que un cerco de una línea convertía una
+    respuesta buena en «respuesta inválida» —el candidato a `pendiente` y la
+    llamada pagada dos veces por el reintento de PR-14—. Lo que distingue la
+    etiqueta del cuerpo no es el salto: es que el cuerpo abre en `{` o en `[`.
     """
     limpio = salida.strip()
     if not limpio.startswith(CERCO):
         return limpio
-    sin_apertura = limpio.split("\n", 1)[1] if "\n" in limpio else ""
-    return sin_apertura.rsplit(CERCO, 1)[0].strip()
+    dentro = limpio.removeprefix(CERCO)
+    # El cierre es el **último** `````: el cuerpo no lo lleva dentro, y si el
+    # modelo se dejó el cierre sin escribir, lo de delante se valida igual.
+    cierre = dentro.rfind(CERCO)
+    if cierre != -1:
+        dentro = dentro[:cierre]
+    dentro = dentro.strip()
+    piezas = dentro.split(maxsplit=1)
+    if len(piezas) == 2 and not piezas[0].startswith(APERTURAS_DE_JSON):
+        return piezas[1].strip()
+    return dentro
 
 
 def _objeto(texto: str, donde: str) -> Mapping[str, object]:
