@@ -67,6 +67,16 @@ mediría un camino que nadie recorre, y entonces un verde no diría nada.
 | **Ronda de revisión** ↓ | | |
 | `9569244` `estructural:` | lo que el arnés decía de sí mismo y no hacía: el `critico` del docstring (M3), la licencia de `corredor.py` escrita con la letra del plan (M2) y los seis archivos de test que ahora hay (I1). **Sin conducta**: mismo resultado de tests antes y después (bloque 2 ter) | 90 (+), 9 (−) |
 | `a2eca0e` `comportamiento:` | un score fuera de rango ya no se reporta como «resistió la inyección» (M1) | 37 (+), 2 (−) |
+| `2d9701c` `docs:` | este cuerpo: la ronda hallazgo por hallazgo, los 21 tests y los bloques 2 bis, 2 ter, 2 quater y 5 | — |
+| `5e8497b` `estructural:` | una frase más que no era verdad, encontrada **al medir M2**: `corredor.py` no es «el único módulo que importa de `app/`» —`calificacion.py` importa un tipo— sino el único que **llama**. Solo prosa | 14 (+), 9 (−) |
+
+**Una nota de orden, porque la regla 3 de `PLAN.md` §1 pide los estructurales
+primero:** el último commit es estructural y va **detrás** del de comportamiento.
+La razón es que la imprecisión salió al escribir la medición de M2 para este
+cuerpo, no antes. Lo que la regla protege sí se respeta —ningún commit mezcla
+refactor con conducta, y ese commit es **solo prosa**: `196 passed, 1 xfailed`
+antes y después—; lo que no se respeta es el orden, y se dice aquí en vez de
+reescribir la historia de la rama.
 
 **Los dos estructurales van primero y traen la evidencia que §4 pide para un
 estructural:** los mismos tests, sin tocarlos, con el mismo resultado antes y
