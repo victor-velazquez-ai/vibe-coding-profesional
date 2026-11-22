@@ -1,4 +1,4 @@
-"""El camino de producción que recorre el arnés. El único módulo que importa de `app/`.
+"""El camino de producción que recorre el arnés. El único que **llama** a `app/`.
 
 **La regla de este archivo: aquí no hay una segunda forma de puntuar.** Un arnés
 que construyera su propio prompt, su propio cliente o su propia pseudonimización
@@ -37,8 +37,12 @@ repositorio y la activación por empresa (PR-10). Las tres necesitan base de dat
 donde ocurre, en `tests/match/`.
 
 **La licencia que este archivo se toma, escrita y no supuesta (hallazgo M2 de la
-revisión).** Dos cosas de aquí no las hace ningún otro módulo del repo fuera de
-`tests/`:
+revisión).** Dos cosas, y la medida que dice cuánto se sale de la norma:
+`grep -rl 'from app.match' --include=*.py` fuera de `app/match/` y de `tests/`
+devuelve seis archivos, y **cuatro importan la fachada**; los dos que no son de
+`evals/`: este, con cuatro imports de internos, y `calificacion.py`, con uno que
+es **solo un tipo** (`RespuestaDelProveedor`, para calificar lo que el camino
+devuelve sin inventarse una forma paralela). Las dos cosas de aquí:
 
 - **importa internos de Match** (`services.pseudonimizador`, `proveedor.cliente`,
   `configuracion`) en vez de la fachada. Es la consecuencia directa de la regla de
