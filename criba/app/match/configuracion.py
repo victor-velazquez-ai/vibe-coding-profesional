@@ -119,7 +119,14 @@ class AjustesDeMatch:
 def ajustes_match() -> AjustesDeMatch:
     """Variable de entorno y no constante (R6·I5), y **vacía por omisión**: una
     empresa nueva, o un entorno nuevo, nace apagada. Los tests invalidan con
-    `ajustes_match.cache_clear()`."""
+    `ajustes_match.cache_clear()`.
+
+    `lru_cache` significa **una lectura por proceso**, y eso hay que decirlo
+    donde se lee (R?·M1): cambiar cualquiera de estas cuatro variables en el
+    entorno de un proceso ya arrancado **no cambia nada hasta reiniciarlo**. Vale
+    para el interruptor global, para la activación por empresa y para el modo de
+    proveedor: volver al MOCK para cortar gasto —pregunta abierta 11 de `PLAN.md`
+    §9— es un reinicio, no un `export`."""
     crudo = os.environ.get(VARIABLE_DE_EMPRESAS, "")
     return AjustesDeMatch(
         activo=os.environ.get(VARIABLE_GLOBAL, "").strip().lower() in VERDADEROS,
