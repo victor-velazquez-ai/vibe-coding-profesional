@@ -14,9 +14,11 @@ from app.plataforma import repositorio
 from app.plataforma.modelos import Rol
 from app.plataforma.seguridad import verificar_contrasena
 from app.plataforma.sesion import (
+    RUTA_POR_OMISION,
     UsuarioSesion,
     borrar_cookie,
     escribir_cookie,
+    ruta_interna,
     sesion_opcional,
 )
 
@@ -32,7 +34,7 @@ def raiz(sesion: Annotated[UsuarioSesion | None, Depends(sesion_opcional)]) -> R
 
 
 @router.get("/entrar", response_class=HTMLResponse)
-def formulario(request: Request, bd: BD, destino: str = "/vacantes") -> Response:
+def formulario(request: Request, bd: BD, destino: str = RUTA_POR_OMISION) -> Response:
     return plantillas.TemplateResponse(
         request,
         "entrar.html",
@@ -52,7 +54,7 @@ def entrar(
     usuario: Annotated[str, Form()],
     contrasena: Annotated[str, Form()],
     empresa: Annotated[str, Form()] = "",
-    destino: Annotated[str, Form()] = "/vacantes",
+    destino: Annotated[str, Form()] = RUTA_POR_OMISION,
 ) -> Response:
     fila = repositorio.usuario_por_nombre(bd, usuario.strip())
     valido = fila is not None and verificar_contrasena(contrasena, fila.hash_contrasena)
@@ -79,7 +81,7 @@ def entrar(
         empresa_id, empresa_nombre, es_soporte = fila.empresa_id or 0, fila.empresa.nombre, False
 
     respuesta = RedirectResponse(
-        destino if destino.startswith("/") else "/vacantes",
+        ruta_interna(destino),
         status_code=status.HTTP_303_SEE_OTHER,
     )
     escribir_cookie(

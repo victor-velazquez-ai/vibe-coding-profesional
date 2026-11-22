@@ -116,6 +116,22 @@ class RepositorioEmpresa:
             )
         )
 
+    def vacantes_postuladas(self, candidato_id: int) -> set[int]:
+        """Las vacantes de esta empresa en cuya lista aparece este candidato.
+
+        Sin filtrar por etapa, a propósito: `candidatos_de_vacante` tampoco lo
+        hace, así que una postulación cerrada sigue siendo una fila con su botón
+        de borrar.
+        """
+        return set(
+            self._s.scalars(
+                select(Postulacion.vacante_id).where(
+                    Postulacion.empresa_id == self._empresa_id,
+                    Postulacion.candidato_id == candidato_id,
+                )
+            )
+        )
+
     def postulaciones_abiertas(self, candidato_id: int) -> list[Postulacion]:
         """Las postulaciones vivas de un candidato. PR-06 encola una por cada una."""
         return list(
@@ -153,6 +169,42 @@ class RepositorioEmpresa:
         self._s.add(postulacion)
         self._s.flush()
         return postulacion
+
+    def exigir_vacante_del_borrado(self, candidato_id: int, vacante_id: int) -> None:
+        """Comprueba, **antes de borrar**, la vacante desde la que se confirma.
+
+        El formulario de borrado manda un `vacante_id` que afirma «estoy viendo a
+        este candidato en esta vacante» (`_candidatos.html`), y hasta hoy nadie
+        comprobaba la afirmación: con un `vacante_id` ajeno el borrado se
+        ejecutaba igual y la respuesta era un 404 —el reclutador leía «aquí no hay
+        nada» y lo que había pasado es que perdió al candidato, su CV y su
+        postulación— (QA backend BUG-2, `qa/reportes/2026-11-22-backend.md`).
+        `qa/TRIAGE.md` elige, de las dos salidas que la QA aceptaba, **no borrar
+        nada y responder 404**.
+
+        La regla, en dos mitades porque el `vacante_id` dice dos cosas distintas
+        según el candidato:
+
+        - si el candidato **aparece en alguna lista**, la vacante del formulario
+          tiene que ser una de ellas. Es la afirmación falsa del hallazgo: una
+          vacante inexistente, otra vacante de la empresa o una de otra empresa;
+        - si el candidato **no está postulado a nada**, no hay ninguna lista que
+          el formulario pueda estar mirando y lo único que queda por exigir es
+          que la vacante sea de esta empresa (CA1), que es de donde sale el
+          fragmento de la respuesta. Es el caso de
+          `tests/match/test_vacante_no_espera.py`, que borra un candidato sin
+          postulaciones desde la vista de la vacante y recibe su lista.
+        """
+        suyas = self.vacantes_postuladas(candidato_id)
+        if vacante_id in suyas:
+            return
+        if suyas:
+            raise SinPermiso(
+                f"La vacante {vacante_id} no es ninguna de las postulaciones del candidato "
+                f"{candidato_id}: el borrado no se ejecuta."
+            )
+        if self.vacante(vacante_id) is None:
+            raise SinPermiso(f"La vacante {vacante_id} no es de esta empresa.")
 
     def borrar_candidato(self, candidato_id: int) -> None:
         """El procedimiento de borrado de hoy. Es el gancho que PR-18 va a tocar.

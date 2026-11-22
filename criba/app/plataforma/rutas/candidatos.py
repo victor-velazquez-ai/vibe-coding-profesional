@@ -71,6 +71,12 @@ def borrar(
 ) -> Response:
     repo = RepositorioEmpresa(bd, contexto.empresa_id)
     try:
+        # Primero el guardia y después el borrado, que es el orden que faltaba
+        # (QA backend BUG-2): con un `vacante_id` ajeno se respondía 404 **ya
+        # borrado**. Sin `vacante_id` no hay vacante que comprobar: la respuesta
+        # es la redirección de abajo y no el fragmento de ninguna lista.
+        if vacante_id:
+            repo.exigir_vacante_del_borrado(candidato_id, vacante_id)
         repo.borrar_candidato(candidato_id)
     except SinPermiso as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND) from exc
