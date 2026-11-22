@@ -14,11 +14,25 @@ cuerpo que sale de Criba se construye aquí y en ningún otro sitio.
    **también del texto libre**. No amplía CA2: CA2 dice «el cuerpo enviado no
    contiene ninguno de esos seis datos» y no distingue campo de narrativa. Y es
    el caso corriente: prácticamente todo CV repite el nombre en la primera línea;
-2. **patrones** — correo, teléfono, URL y dirección caen aunque **no** estén en
-   ningún campo. Hacen falta porque hay datos de §1a que el esquema no guarda en
-   ninguna columna —la **dirección** y la **foto** no tienen campo en
-   `candidatos` (`app/plataforma/modelos.py`)— y porque la sección de referencias
-   trae el correo y el teléfono de otra persona.
+2. **patrones** — correo, teléfono, URL, dirección y nombre de archivo de foto
+   caen aunque **no** estén en ningún campo. Hacen falta porque hay datos de §1a
+   que el esquema no guarda en ninguna columna —la **dirección** y la **foto** no
+   tienen campo en `candidatos` (`app/plataforma/modelos.py`)— y porque la
+   sección de referencias trae el correo y el teléfono de otra persona.
+
+**Un valor conocido se reconoce sin acentos y sin mayúsculas**, en
+`_tolerante_a_acentos`: «Jose Angel Trevino» es el mismo nombre que «José Ángel
+Treviño». §1a dice «nombre», no «el nombre tal como está escrito en la base de
+datos», y el candidato que firma su CV sin tildes es el caso corriente. Lo dice
+la **auditoría de CVs sintéticos del 22-nov-2026**, que encontró ese nombre
+saliendo entero al proveedor con los siete tests del paso en verde: sus fixtures
+escribían la PII del texto libre idéntica, carácter por carácter, a la de los
+campos, así que probaban la igualdad exacta y no el parecido.
+
+**Y una foto puede llegar como nombre de archivo y no como URL** —«Foto adjunta:
+sofia_ramirez_2026.png»—, que es la segunda fuga de esa auditoría y la forma
+corriente en que una foto llega a un CV subido. Son dos datos de §1a en la misma
+línea: la foto y, dentro del nombre de archivo, el de la candidata.
 
 El orden es **patrones primero y valores conocidos después**, y no es un detalle
 de estilo: al revés, quitar «Valentina» del *slug* de su URL de LinkedIn rompería
@@ -48,6 +62,7 @@ de `SPEC.md`, antes del 12-dic-2026). El test 3b las espera en `xfail(strict)`.
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from app.match.proveedor.payload import PayloadPseudonimizado, unica_fabrica
 from app.plataforma.modelos import Candidato
@@ -59,10 +74,28 @@ MARCA_DE_CORREO = "[correo]"
 MARCA_DE_TELEFONO = "[telefono]"
 MARCA_DE_DIRECCION = "[direccion]"
 MARCA_DE_ENLACE = "[enlace]"
+MARCA_DE_FOTO = "[foto]"
 
 # Un valor de campo más corto que esto no se usa como patrón: «de», «la» o una
 # inicial suelta se comerían media narrativa (F1).
 LARGO_MINIMO = 3
+
+# Las extensiones que hacen de un nombre de archivo una **foto**, que es uno de
+# los seis datos de §1a. Lista corta y deliberada, por la misma razón que la de
+# los sufijos de calle: solo formatos de imagen, nunca el `.pdf` del título ni el
+# `.docx` de la carta, que no son datos de nadie.
+_EXTENSIONES_DE_FOTO = (
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "webp",
+    "heic",
+    "heif",
+    "bmp",
+    "tif",
+    "tiff",
+)
 
 # Los sufijos de calle. Lista corta y deliberada: `Dr`, `St.` como abreviatura de
 # santo o `Way` dentro de una frase son los falsos positivos conocidos, así que
@@ -98,6 +131,21 @@ PATRONES: tuple[tuple[re.Pattern[str], str], ...] = (
         re.compile(r"(?:https?://|www\.)[^\s<>()\[\]\"'«»]+(?<![.,;:!?])", re.IGNORECASE),
         MARCA_DE_ENLACE,
     ),
+    # La foto **adjunta**, que no es una URL: `[Foto adjunta: sofia_ramirez_2026.png]`.
+    # Es la segunda fuga de la auditoría del 22-nov-2026 y es la forma corriente en
+    # que una foto llega a un CV subido. Cae el nombre de archivo **entero** y no
+    # solo la parte que es un nombre: el nombre de archivo de una foto de carné
+    # identifica a quien la subió aunque lleve dentro un apodo o un número de
+    # expediente, y partirlo dejaría trozos que ya ningún patrón reconoce.
+    # Va **después** del enlace a propósito: una URL que acaba en `.jpg` tiene que
+    # caer entera como enlace, no por su último segmento.
+    (
+        re.compile(
+            r"[\w.\-]+\.(?:" + "|".join(_EXTENSIONES_DE_FOTO) + r")(?!\w)",
+            re.IGNORECASE,
+        ),
+        MARCA_DE_FOTO,
+    ),
     # Correos, estén en un campo o en la narrativa (el de la referencia no lo está).
     (re.compile(r"[\w.+%-]+@[\w-]+(?:\.[\w-]+)+"), MARCA_DE_CORREO),
     # Teléfonos: diez dígitos con prefijo opcional, separados por espacio, punto,
@@ -129,8 +177,15 @@ def pseudonimizar(candidato: Candidato) -> PayloadPseudonimizado:
     Recibe el **candidato** y no solo su texto porque la mitad del trabajo sale de
     sus campos: lo que está en `nombre`, `correo`, `telefono` o `links` se quita
     también del texto libre (R1·B3).
+
+    El texto entra **normalizado a NFC**, que es la otra mitad de «los acentos no
+    cuentan» (`_tolerante_a_acentos`): un CV extraído de un PDF puede traer la
+    tilde en un punto de código aparte —la letra `e` y la tilde suelta, U+0301— y
+    entonces el «José» del campo no casaría con el «José» del texto. NFC es una
+    equivalencia canónica: no cambia el texto que el proveedor lee, solo cómo está
+    escrito por dentro.
     """
-    texto = candidato.cv_texto or ""
+    texto = unicodedata.normalize("NFC", candidato.cv_texto or "")
     sustituciones = 0
     for patron, marca in PATRONES:
         texto, hechas = patron.subn(marca, texto)
@@ -173,5 +228,59 @@ def _patron_de_valor(valor: str) -> re.Pattern[str]:
     Los bordes se piden con `(?<!\\w)` y `(?!\\w)` y no con `\\b`, porque hay
     valores que empiezan por un carácter que no es de palabra —`+1 713 …`— y ahí
     `\\b` no casa nunca.
+
+    Y **los acentos no cuentan**, igual que las mayúsculas: «Jose Angel Trevino»
+    es el mismo nombre que «José Ángel Treviño», y quien lea el cuerpo al otro
+    lado identifica a la misma persona (primera fuga de la auditoría del
+    22-nov-2026). No es una regla nueva: §1a dice «nombre», no «el nombre tal
+    como está escrito en la base de datos».
     """
-    return re.compile(rf"(?<!\w){re.escape(valor)}(?!\w)", re.IGNORECASE)
+    return re.compile(rf"(?<!\w){_tolerante_a_acentos(valor)}(?!\w)", re.IGNORECASE)
+
+
+def _tolerante_a_acentos(valor: str) -> str:
+    """El valor como patrón, con cada letra abierta a sus variantes acentuadas.
+
+    `José` sale como `[jĵ][eèéê…][sśş…][eèéê…]`: así casa escrito con tildes y sin
+    ellas, en los dos sentidos —el campo acentuado contra el texto sin acentos, y
+    al revés—, que es el caso corriente (teclado sin configurar, PDF mal extraído,
+    una nómina que no admite tildes).
+
+    Lo que **no** hace es normalizar el texto que sale: el cuerpo enviado conserva
+    sus acentos. Aquí solo se abre lo que se **reconoce**.
+    """
+    piezas: list[str] = []
+    for caracter in unicodedata.normalize("NFC", valor):
+        familia = _FAMILIAS_DE_LETRA.get(_sin_diacriticos(caracter).lower())
+        piezas.append(f"[{re.escape(familia)}]" if familia else re.escape(caracter))
+    return "".join(piezas)
+
+
+def _sin_diacriticos(texto: str) -> str:
+    """El texto sin marcas de acento, por descomposición canónica (NFD)."""
+    return "".join(c for c in unicodedata.normalize("NFD", texto) if not unicodedata.combining(c))
+
+
+def _familias_de_letra() -> dict[str, str]:
+    """Por cada letra ASCII, **todas** las letras latinas que son esa misma letra.
+
+    Se calcula una vez, al importar, recorriendo el bloque latino de Unicode y
+    preguntándole a `unicodedata` cuál es la letra de debajo del acento: una tabla
+    escrita a mano se quedaría corta el día del primer apellido con `ğ` o con `ů`
+    (F34). Fuera quedan las letras cuya forma sin acento no es una sola letra
+    ASCII —la eszett, la ligadura `æ`, la i sin punto del turco—: ahí no hay «la
+    misma letra sin tilde» y este módulo no la inventa.
+    """
+    familias: dict[str, set[str]] = {}
+    for punto in range(0x00C0, 0x0250):  # Latin-1 Supplement, Latin Extended-A y B
+        caracter = chr(punto)
+        base = _sin_diacriticos(caracter)
+        minuscula = caracter.lower()
+        if len(base) == 1 and base.isascii() and base.isalpha() and len(minuscula) == 1:
+            familias.setdefault(base.lower(), set()).add(minuscula)
+    return {base: "".join(sorted(variantes | {base})) for base, variantes in familias.items()}
+
+
+# Al importar y no por llamada: son ~380 puntos de código y el bucle de PR-14
+# pseudonimiza un CV por trabajo.
+_FAMILIAS_DE_LETRA = _familias_de_letra()
