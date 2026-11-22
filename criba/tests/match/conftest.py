@@ -34,11 +34,21 @@ from app.plataforma.sesion import ContextoEmpresa
 from tests.dobles.proveedor import RAZONES, ProveedorContado
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
-# Los dos últimos los añade PR-08: la guardia de «el archivo se declara
-# sintético» de PR-03 tiene que cubrir también las fixtures de PII, que son las
-# que más se parecen a un CV real (F12).
-# Los dos últimos los añade la auditoría de CVs sintéticos del 22-nov-2026 (las
-# dos fugas de CA2: el nombre sin acentos y el archivo de la foto adjunta).
+# Los dos primeros son de PR-03; las cinco `pii_*` las añade PR-08, porque la
+# guardia de «el archivo se declara sintético» de PR-03 tiene que cubrir también
+# las fixtures de PII, que son las que más se parecen a un CV real (F12).
+#
+# Llegaron en tres tandas, y cada una porque un test anterior no veía su caso:
+# las dos de texto libre con el paso (CA2 en español y en inglés); `sin_acentos`
+# y `foto_adjunta` con las dos fugas de CA2 de la auditoría de CVs sintéticos del
+# 22-nov-2026; y `otras_formas_de_escribir` con los hallazgos I1, I2 y M5 de la
+# tercera ronda de revisión (el mismo dato escrito de otra forma).
+#
+# (La versión anterior de este comentario decía dos veces «los dos últimos» con
+# dos razones distintas, que es el defecto de cita de M4. La otra mitad de M4 no
+# se arregla aquí: ni la auditoría del 22-nov ni esta ronda tienen archivo en
+# `docs/`, y eso lo registra quien escribe el cuerpo del PR — CLAUDE.md: «cita
+# siempre la fuente: archivo y minuto de la llamada, o el ID de la decisión».)
 ARCHIVOS_DE_CV = (
     "enfermeria_es",
     "enfermeria_en",
@@ -46,6 +56,7 @@ ARCHIVOS_DE_CV = (
     "pii_en_texto_libre_en",
     "pii_sin_acentos_es",
     "pii_foto_adjunta_es",
+    "pii_otras_formas_de_escribir_es",
 )
 CONTRASENA = "prueba1234"
 DESCRIPCION = "Piso de medicina interna, turno nocturno. Licencia RN vigente en Texas."
