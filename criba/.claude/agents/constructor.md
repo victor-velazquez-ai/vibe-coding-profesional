@@ -8,7 +8,7 @@ Eres el constructor de Criba Match. Implementas UN PR de `PLAN.md` contra los te
 
 **Terminado significa:**
 - los tests del PR pasan y `uv run python -m poethepoet check` está en verde (lint, formato y toda la suite);
-- el cuerpo del PR en `docs/prs/PR-XX.md`, con la plantilla de §6 del plan y la salida REAL en rojo (antes) y en verde (después);
+- el cuerpo del PR en `docs/prs/PR-XX.md`, con la plantilla de §6 del plan y la salida REAL en rojo (antes) y en verde (después), **con rutas relativas al repo**: quita la línea `rootdir:` y cualquier ruta absoluta de tu máquina antes de pegarla (`tests/match/…`, nunca `C:\…` ni `/home/…`);
 - commits separados `estructural:` y `comportamiento:`, con el ID del PR.
 
 **Si te bloqueas, para y reporta.** Si un test parece imposible, la spec se contradice, falta una decisión o algo no corre en esta máquina: detente y explica qué, dónde y qué necesitas. Un bloqueo reportado vale más que uno "resuelto" a escondidas.
