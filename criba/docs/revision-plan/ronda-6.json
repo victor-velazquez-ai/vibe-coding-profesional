@@ -1,0 +1,149 @@
+{
+  "ronda": 6,
+  "confianza": 80,
+  "veredicto": "cambios",
+  "bloqueantes": [
+    {
+      "id": "B1",
+      "paso": "PR-05 (opción (a)/(b) de R3·I2) + PR-06 (interruptor global, test 4) + `app/match/fachada.py` (docstring de `montar`)",
+      "requisito": "SPEC Objetivo / D1 («dentro de la plataforma actual de Criba») y la premisa de CA4, CA8 y CA18: «cuando un reclutador / hiring manager la abre» la vacante responde 200. CA18: el HM «abre la vacante» y recibe una respuesta sin Match, no un 404 ni una lista vacía.",
+      "problema": "Es R5·B1, que sigue abierto: el plan no cambió y ahora el código lo hace concreto. La vista de vacante es `GET /vacantes/{vacante_id}` → `app/plataforma/rutas/vacantes.py::ver`, servida por la plataforma, y PR-01 hecho 4 empuja a la opción (b) («cuesta cambiar el cuerpo de un método del repositorio por una llamada a la fachada»). Bajo (b) la lista de la plataforma pasa a depender de `listar_vacante` de la fachada; PR-06 define el interruptor global «apagado por omisión fuera de tests» que «convierte `encolar` y `montar(app)` en no-op», `fachada.py` ya lo codifica en el docstring de `montar` («En PR-06 esta función pasa a ser no-op con el interruptor global apagado»), y ni PR-05 ni PR-06 dicen qué hace `listar_vacante` apagado. Bajo (a), el router de Match (prefijo `/match`, vacío) tendría que quedarse con `/vacantes/{id}` y `montar(app)` no-op lo desmonta: el escenario de la ronda 5 tal cual.",
+      "escenario": "PR-05 elige (b): `candidatos_de_vacante` (o `ver`) delega en `listar_vacante`. PR-06 se mezcla el 5-dic con el interruptor apagado por omisión y `main` se despliega (pregunta 9 de §9, el mismo supuesto que justifica el interruptor). El desarrollador sigue el patrón escrito —la fachada es no-op apagada— y `listar_vacante` devuelve vacío o lanza: `GET /vacantes/{id}` de las 40 empresas sale sin candidatos o con 500 hasta la noche de la precondición 6 (semana del 29-dic). Con (a): 404 para todos. Y después de la demo, apagar el interruptor para cortar gasto (pregunta 11) tumba la vista de vacante de toda la plataforma.",
+      "arreglo": "Definir el alcance del interruptor en PR-06, con test: apaga `encolar`, el bucle del ejecutor y los endpoints bajo `/match`; nunca la vista de vacante. Bajo (b), `listar_vacante` con el interruptor apagado devuelve exactamente la lista de hoy (por fecha, sin score, sin orden por score, sin sección de pendientes), que es la misma vista que CA18 define para el HM y PR-10 test 3 para Meridian. Reescribir el test 4 de PR-06 como «los endpoints bajo `/match` no quedan montados, cero filas, y `GET /vacantes/{id}` responde 200 con la lista por fecha para reclutador y HM». Añadir a PR-07 un cuarto guion: interruptor apagado → la reclutadora sigue abriendo la vacante. Corregir el docstring de `montar` en `fachada.py` en PR-06."
+    }
+  ],
+  "importantes": [
+    {
+      "id": "I1",
+      "paso": "PR-05 (decisión (a)/(b) de R3·I2 y su lista de archivos) + PR-04 test 6 + PR-01 hecho 4",
+      "requisito": "D4 / CA1 (el `empresa_id` no viaja como argumento de llamador: PR-04 test 6 y `docs/arquitectura.md` §4); CA8/CA18 sobre la ruta real; meta de la Etapa 0 («una reclutadora de Northstar lo ve en su vacante», PR-07 guion 1).",
+      "problema": "Ninguna de las dos opciones encaja con el código tal como están descritas. (b): PR-01 hecho 4 propone «cambiar el cuerpo de un método del repositorio por una llamada a la fachada», pero `RepositorioEmpresa` solo tiene un `int` `empresa_id` (`app/plataforma/repositorio.py:41-45`) y no tiene la petición ni la cookie; llamar `listar_vacante(empresa_id=…)` es exactamente lo que PR-04 test 6 prohíbe («no existe ninguna función de Match que acepte `empresa_id` como argumento»), y el contexto «de petición» de Match no se puede construir desde dentro del repositorio de la plataforma. (a): la lista se renderiza desde cuatro sitios (`app/plataforma/fragmentos.py`, docstring): `ver` y las tres escrituras `postular`, `subir_cv` y `borrar` devuelven `_candidatos.html` con `hx-swap=\"outerHTML\"` sobre `#candidatos`; «retirar o redirigir la vista» deja tres POST de la plataforma intercambiando la lista de Match por la de la plataforma. Y sigue R5·I2: ningún paso de la Etapa 0 es dueño de pintar el score; bajo (b) la plantilla es `app/plataforma/plantillas/_candidatos.html`, que PR-05 no lista, y las plantillas `app/match/templates/match/vacante.html` y `_lista.html` que PR-05 sí lista no sirven para nada bajo (b).",
+      "escenario": "(b) según hecho 4: `candidatos_de_vacante` llama a la fachada con `self._empresa_id` → PR-04 test 6 rojo, o se abre la primera excepción «solo esta». (a): la reclutadora sube un CV por HTMX desde la vista de Match (PR-06 test 1 entra por esa ruta), la respuesta es `_candidatos.html` de la plataforma y la tabla con score desaparece hasta recargar; el E2E de PR-07 «el candidato aparece con su score del MOCK» queda rojo en H0 porque nadie pintó la columna.",
+      "arreglo": "PR-05 fija (b) en el nivel de ruta, no de repositorio: `ver` y `fragmento_candidatos` (los cuatro puntos de render) llaman a `listar_vacante(bd, contexto, vacante_id)` pasando la sesión de BD y el `ContextoEmpresa` tipado que sale de la cookie (`app/plataforma/sesion.py`), nunca un entero; PR-04 test 6 se enuncia como «ningún `empresa_id` entero como argumento; solo contextos tipados construidos desde la cookie o desde la fila de la vacante». `listar_vacante` devuelve las filas de hoy más score/razones/estado según rol (nada para HM, nada con interruptor apagado o empresa no activada). PR-05 lista `app/plataforma/fragmentos.py` y `_candidatos.html` como archivos tocados y asume la columna de score condicionada por rol (resuelve R5·I2 con el test «la reclutadora ve el score del MOCK; el HM no»); las plantillas `app/match/templates/match/vacante.html` y `_lista.html` salen de PR-05. Si PR-05 insiste en (a), tiene que tomar también los tres fragmentos."
+    },
+    {
+      "id": "I2",
+      "paso": "PR-01 (firma de `encolar` y `borrar_candidato` en `app/match/fachada.py`) + PR-04 (contexto «desde la vacante») + PR-06 (ganchos y tests 1-3)",
+      "requisito": "SPEC alcance 4 y 7, CA9(a) (un CV nuevo se recalcula sin intervención: el trabajo tiene que nacer junto con el CV guardado); regla 1.2 (tests primero sobre la transacción por test de `tests/conftest.py`).",
+      "problema": "`encolar(vacante_id, candidato_id)` no recibe la sesión de base de datos. Las rutas de la plataforma reciben `bd` por `Depends(crear_sesion)` y hacen `bd.commit()` al final (`rutas/candidatos.py:50`, `rutas/vacantes.py:72`); los tests sustituyen `crear_sesion` por la sesión del test con savepoint (`tests/conftest.py:70`). Si `encolar` abre su propia sesión con `motor()` —la única salida con esa firma—, (1) en tests no ve la vacante ni el candidato sembrados dentro de la transacción del test, así que el constructor «desde la vacante» no encuentra la fila, y escribe fuera del savepoint, ensuciando `criba_test` entre tests; (2) en producción el `INSERT` en `match_trabajos` y el `UPDATE` del CV no comparten transacción: trabajo huérfano si la ruta falla después del `encolar`, o CV guardado sin trabajo si `encolar` falla. Lo mismo vale para `borrar_candidato`, que PR-18 inserta dentro de `RepositorioEmpresa.borrar_candidato` y debe correr en esa misma transacción.",
+      "escenario": "PR-06 test 1: `POST /candidatos/{id}/cv` con la sesión de test → el gancho enumera postulaciones con `bd` y llama `encolar(vacante_id, candidato_id)` → `encolar` abre sesión propia → «vacante no existe» (está en el savepoint de otra conexión) → rojo; o encola y el `assert` de «cero filas» del test 2 ve filas de tests anteriores porque se escribieron fuera de la transacción revertida.",
+      "arreglo": "La fachada recibe la sesión de la petición: `encolar(bd, vacante_id, candidato_id)` y `borrar_candidato(bd, candidato_id)`, en la misma transacción que la escritura de la plataforma, sin commit propio (el commit sigue siendo de la ruta). Cambiar la firma en PR-01 (es estructural y la superficie cerrada no cambia) o como primer commit de PR-06; el repositorio de Match se construye sobre esa sesión; PR-04 lo dice en el contexto «desde la vacante» y PR-18 lo hereda."
+    },
+    {
+      "id": "I3",
+      "paso": "PR-04 test 2, regla (a) («se aplica también a `migrations/` y a `tests/`»)",
+      "requisito": "CA1 segunda mitad: «un test que falla si alguna consulta de Match se construye fuera del único repositorio», implementable sin lista blanca (R2·I3, R3·I1).",
+      "problema": "Es R5·I4, confirmado contra el código. `migrations/versions/0000_plataforma_inicial.py` es DDL de Alembic (`op.create_table`, `op.create_index`); la 0001 de PR-02 será `op.create_table(\"match_scores\", …)` fuera de `repositories/`, y `pyproject.toml:45-46` deja escrito que «la regla (a) del test de enumeración de PR-04 también se les aplica». Y `tests/match/test_andamio.py:125` ya construye `select(func.count()).select_from(Empresa)` directamente: el mismo patrón, aplicado a `match_trabajos` para «cero filas» (PR-06 tests 2 y 4, PR-10 tests 1 y 4), pone la regla (a) en rojo.",
+      "escenario": "PR-04 se implementa literal: rojo sobre la migración 0001 el primer día; se excluye «este archivo»; PR-06 añade la segunda excepción por el `select(match_trabajos)` del test; en PR-18 la tercera. A partir de ahí nadie mira si la cuarta es un `insert(match_trabajos)` en un gancho.",
+      "arreglo": "Fijar en PR-04, por naturaleza: la regla (a) detecta DML (`select`/`insert`/`update`/`delete`/`text()`/`session.execute` con SQL crudo que nombre `match_*`); el DDL de Alembic (`op.*`) queda fuera con la razón escrita en el test. Los tests observan `match_*` por métodos de negocio del repositorio con contexto de empresa («trabajos de esta empresa», «scores de esta empresa») y «cero filas» se asercia por empresa sobre las dos de la fixture. Anticipar el recorrido de CA16 con un método de `borrado/inventario.py` sobre un contexto «desde el candidato», enumerado en PR-04 como lectura con empresa."
+    },
+    {
+      "id": "I4",
+      "paso": "PR-07 guion 3 / PR-05 test 2 (el 403 de los endpoints de Match)",
+      "requisito": "CA18: «los endpoints de Match le devuelven 403». El test no puede ser vacío en H0.",
+      "problema": "Es R5·I3, sin cambios en el plan. El router de Match existe vacío con prefijo `/match` (`app/match/routers/vacante.py`), y con la opción (b) —la que el código favorece— PR-05 puede no añadir ningún endpoint bajo `/match` en la Etapa 0. PR-07 guion 3 pide «el fragmento de orden por score → 403» y ese fragmento llega en PR-20; «recalcular» llega en PR-23.",
+      "escenario": "Se escribe el E2E tal cual: el HM pide el fragmento de orden por score → no hay ruta → 404 ≠ 403 → rojo en H0. La salida fácil es marcar el guion como no bloqueante (PR-07 lo admite «si no se puede estabilizar») y el 403 de CA18 queda sin ejercer hasta la Etapa 2.",
+      "arreglo": "PR-05 declara qué endpoint específico de Match existe en la Etapa 0 —lo natural bajo (b) es `GET /match/vacantes/{id}/lista?orden=fecha`, el fragmento HTMX que PR-20 extiende con `orden=score`— y ese es el que da 403 al HM en el test 2 y en el guion 3. Si PR-05 decide que no hay ninguno, lo dice, y el guion 3 pierde su segunda mitad con la razón y la fecha en que vuelve (PR-20)."
+    },
+    {
+      "id": "I5",
+      "paso": "PR-06 (interruptor global «encendido en tests y en staging») / regla 1.7 / §0 punto 1",
+      "requisito": "Regla 1.7 y §0 punto 1 («no se puntúa ningún dato real antes de PR-18 y PR-19»), derivadas de CA16 y D15; CA3 («ningún registro de Match» para una empresa sin anexo).",
+      "problema": "Es R5·I1 y no se puede resolver con el código: el repo no tiene configuración de staging (`app/configuracion.py` solo tiene URLs de desarrollo y test, y ningún interruptor), así que sigue sin saberse si staging lleva datos reales. El plan mantiene «encendido en tests y en staging» sin preguntar qué datos tiene staging.",
+      "escenario": "Staging se refresca desde producción. Desde el 5-dic los dos ganchos encolan cada CV y cada postulación de las 40 empresas en staging y el bucle de PR-06 escribe scores del MOCK sobre candidatos reales, incluidos los de Meridian (CA3), sin vía de borrado hasta PR-18; la medición de T1 corre sobre una base con 500 sintéticos mezclados con reales.",
+      "arreglo": "Hecho 8 en PR-01: «¿staging lleva datos reales y con qué frecuencia se refresca?» (a confirmar con Tomás el 1-dic, junto con la pregunta 9). El interruptor pasa a ser una variable de entorno explícita (`CRIBA_MATCH_ACTIVO`, apagada por omisión, encendida por `tests/conftest.py`), y en staging solo se enciende sobre una base sembrada únicamente con sintéticos o después de PR-18 y PR-19. Anotarlo en la regla 1.7 y en la acción 6 de §7."
+    },
+    {
+      "id": "I6",
+      "paso": "PR-01 (criterio «CI verde en un PR limpio», `.github/workflows/criba-ci.yml`) y las puertas de mezcla de la Etapa 0 (regla 1.2, §0 punto 3, regla 1.7)",
+      "requisito": "§0 punto 3 («nada se mezcla con CI en rojo») y regla 1.7 («en verde en la suite completa»): son los mecanismos que el plan usa como puerta, y presuponen que CI corre.",
+      "problema": "El workflow no corre en este repositorio. Tiene `paths: [\"criba/**\", …]` y `working-directory: criba`, pero la raíz del repo es `criba` (el `pyproject.toml` y `tests/` están en la raíz): ningún push toca una ruta `criba/**`, así que el job no se dispara, y si se disparara fallaría por el directorio inexistente. PR-01 lo declara como «riesgo menor» y aun así marca `[x] CI verde en un PR limpio`: la evidencia del PR son solo ejecuciones locales. Además PR-07 necesita navegadores de Playwright, que `uv sync --locked` no instala.",
+      "escenario": "PR-02 a PR-07 se mezclan con una suite que solo corre en la máquina de Víctor; el test de enumeración de PR-04 queda rojo tras un cambio de PR-06 y nadie lo ve porque no hay check en el PR; la regla «nada se mezcla con CI en rojo» no ha protegido nada en toda la Etapa 0.",
+      "arreglo": "Confirmar con Tomás antes del 1-dic si el repo real es monorepo; mientras tanto, el workflow corre en la raíz de este repo (sin filtro `paths`, sin `working-directory`) y PR-01 solo marca el criterio cuando exista una ejecución enlazada. Añadir en PR-07 el paso `playwright install --with-deps chromium`."
+    }
+  ],
+  "menores": [
+    {
+      "id": "M1",
+      "paso": "PR-03 (contenido de la fixture: «un staff de Criba por empresa»)",
+      "requisito": "D6 y PR-04 R2·I1: el staff no pertenece a ninguna empresa; CA1 con staff en contexto de soporte (PR-05 test 1).",
+      "problema": "Es R5·M2, y ahora choca con el esquema: `ck_usuarios_staff_sin_empresa` exige `(rol = 'staff_criba') = (empresa_id IS NULL)` (`modelos.py:103-106`, migración 0000). Un staff «por empresa» no se puede insertar. El contexto de soporte real es el login eligiendo empresa (`rutas/autenticacion.py:65-75`), que deja fila en `accesos_soporte`.",
+      "escenario": "PR-03 crea `staff_northstar` con `empresa_id` → `IntegrityError` en la fixture; se arregla a mano con un staff con empresa «solo en tests», y el test de soporte de PR-05 no ejerce el camino real.",
+      "arreglo": "Un único usuario staff sin empresa (como `semilla.py:456-462`) y un helper `sesion_soporte(empresa)` que entra por `POST /entrar` con el slug de la empresa, de modo que el contexto de soporte sea el de producción."
+    },
+    {
+      "id": "M2",
+      "paso": "PR-03 (dónde escribe «Match activo» / «sin anexo»)",
+      "requisito": "Regla 1.1 (un PR = una preocupación) y PR-03 («solo tests, sin comportamiento de producción»).",
+      "problema": "Es R5·M1, resuelto a medias: `app/match/configuracion.py` ya existe (PR-01), pero vacío; el estado de activación por empresa lo crea PR-06 o PR-10 según el texto, y PR-03 lo necesita antes.",
+      "escenario": "El revisor de PR-03 pregunta dónde se escribe «Meridian sin anexo» y la respuesta es un módulo sin contenido.",
+      "arreglo": "PR-03 añade a `configuracion.py` el estado por empresa con valor por omisión «ninguna activada» en un commit `estructural:` declarado, y el `Protocol` del proveedor que el doble implementa; o la fixture de activación se difiere a PR-06 con la nota escrita en PR-03."
+    },
+    {
+      "id": "M3",
+      "paso": "PR-06 test 1 («con el `idioma` del trabajo ya puesto») y PR-01 (hechos del esquema)",
+      "requisito": "D11 / CA11 («`usuarios.idioma`»); PR-02 pone `idioma` en la clave de `match_scores` y `match_trabajos`.",
+      "problema": "En la Etapa 0 no hay de dónde sacar el idioma: `usuarios` no tiene columna `idioma` (`modelos.py:98-118`; SPEC D11 la nombra y PR-01 no anota su ausencia como hecho) y el idioma por omisión de la empresa llega en PR-22. PR-06 tiene que escribir algo en la columna.",
+      "escenario": "PR-06 escribe `'en'` fijo sin declararlo; PR-22 lo cambia y los scores de la suite de H0 y H1 nacen con un idioma que ningún documento fija.",
+      "arreglo": "PR-01 añade el hecho «`usuarios.idioma` no existe en la réplica» (afecta a PR-22, que tendrá que crearlo o leerlo de otro sitio); PR-06 declara el idioma de la Etapa 0 como constante `'en'` hasta PR-22, o PR-03 crea ya la entrada de idioma por omisión en `configuracion.py` junto a la activación."
+    },
+    {
+      "id": "M4",
+      "paso": "PR-05 test 4 («guardia de una sola consulta»)",
+      "requisito": "CA5 / F27 (no N+1), tal como PR-05 y PR-21 lo enuncian.",
+      "problema": "La vista real ya hace tres consultas antes de Match: `repo.vacante`, `candidatos_de_vacante` y `candidatos_sin_postular_a` (`fragmentos.py:18-31`), más las de Match bajo (b). Un guardia literal de «una» nace rojo y se afloja a mano.",
+      "escenario": "Se escribe el contador con `== 1`; sale 4; se cambia a `<= 5` sin razón escrita y el N+1 de 500 filas pasa como `<= 505` en PR-20.",
+      "arreglo": "Enunciar el guardia como «número de consultas constante e independiente del número de candidatos» (se mide con 2 y con 50 filas y tiene que dar lo mismo); PR-21 conserva «una consulta» solo para la consulta de Match."
+    },
+    {
+      "id": "M5",
+      "paso": "PR-02 (migración 0001 y su lista de comprobación F16)",
+      "requisito": "F16: una migración de Match no bloquea una tabla de negocio en horario laboral.",
+      "problema": "Es R5·M3, sin cambios. Las tablas nuevas llevan FK a `candidatos`, `vacantes` y `empresas`; añadir una FK toma `SHARE ROW EXCLUSIVE` sobre la tabla referenciada.",
+      "escenario": "La 0001 corre en horario laboral detrás de una transacción larga sobre `candidatos`; las subidas de CV esperan hasta que termine.",
+      "arreglo": "La lista F16 de PR-02 incluye las FK a tablas de negocio: `lock_timeout` corto, fuera de horario, transacción mínima."
+    },
+    {
+      "id": "M6",
+      "paso": "PR-05 test 1 (CA1, «ni log suyo»)",
+      "requisito": "CA1: el candidato de Northstar «no aparece en ninguna lista, orden, export ni log» de Meridian.",
+      "problema": "Es R5·M4, sin cambios: ningún paso de la Etapa 0 crea los logs JSON con `empresa_id` (`docs/arquitectura.md` §2); la mitad «log» del test no tiene sobre qué asertar.",
+      "escenario": "Se escribe sin la mitad de logs y PR-09 no la añade porque mira texto de CV, no `empresa_id`.",
+      "arreglo": "PR-05 asercia sobre `caplog` con `empresa_id` desde ya, o declara que esa mitad llega con PR-09 y la añade a su lista de tests."
+    },
+    {
+      "id": "M7",
+      "paso": "PR-02 test 1 (inventario de borrado y `match_gasto_mes`)",
+      "requisito": "CA16 segunda mitad: falla si una migración crea una tabla que no está en el inventario.",
+      "problema": "Es R5·M5, sin cambios: `match_gasto_mes` no tiene datos del candidato y el inventario «lista tabla, columna y por qué es dato del candidato».",
+      "escenario": "En enero se añade una tabla «sin datos del candidato» copiando la excepción de `match_gasto_mes` y resulta tener `candidato_id`.",
+      "arreglo": "El inventario lista todas las tablas `match_*`, cada una con sus columnas de candidato o con «ninguna, por qué» explícito, y el test exige la entrada para todas."
+    }
+  ],
+  "descartados_por_exoticos": [
+    {
+      "idea": "R5·M6: si `candidatos` lleva `empresa_id` y qué responde la plataforma a una vacante ajena.",
+      "por_que": "Resuelto por el código, no es hallazgo: `candidatos.empresa_id` existe (`modelos.py:143`, índice y unicidad por empresa) y la plataforma responde 404 a IDs ajenos (`repositorio.vacante` filtra por empresa; `SinPermiso` → 404 en `rutas/*.py`; `fragmentos.py:22-23`)."
+    },
+    {
+      "idea": "Dos workers web corriendo el bucle mínimo de PR-06 (sin lease ni `SKIP LOCKED`) toman el mismo trabajo.",
+      "por_que": "Igual que en la ronda 5: antes de PR-14 el interruptor está apagado en producción y en tests hay un solo proceso."
+    },
+    {
+      "idea": "`crear_sesion` no hace commit aunque su docstring diga «con commit al final» (`app/db.py:27-30`).",
+      "por_que": "Las rutas hacen `bd.commit()` explícito; sin efecto en la Etapa 0. Es una línea de docstring, y con I2 resuelto el commit sigue siendo de la ruta."
+    },
+    {
+      "idea": "El driver es pg8000 y no psycopg (desvío declarado en PR-01).",
+      "por_que": "D2 fija Postgres 16 + SQLAlchemy 2 + Alembic, no el driver; ADR-001 pide cliente asíncrono del proveedor, no de la base. Una línea de URL si el repo real usa psycopg."
+    },
+    {
+      "idea": "`semilla._vaciar` hace `TRUNCATE … RESTART IDENTITY CASCADE` sobre `Base.metadata.sorted_tables`, que arrastrará las tablas `match_*` cuando existan.",
+      "por_que": "Solo desarrollo local, datos sintéticos; es lo deseable al resembrar y no toca producción ni tests."
+    },
+    {
+      "idea": "Con el MOCK devolviendo un score fijo, todos los candidatos empatan en la vista de la Etapa 0.",
+      "por_que": "Cosmético y ya descartado en las rondas 4 y 5; el orden por score llega en PR-20."
+    }
+  ]
+}

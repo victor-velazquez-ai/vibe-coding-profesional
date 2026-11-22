@@ -1,0 +1,83 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run python -m pytest:*)",
+      "Bash(uv run python -m poethepoet:*)",
+      "Bash(uv run poe:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv run alembic:*)",
+      "Bash(uv run python -m alembic:*)",
+      "Bash(uv run ruff:*)",
+      "Bash(uv run python -m ruff:*)",
+      "Bash(uv run python -m app.plataforma.semilla:*)",
+      "Bash(uv run python -m evals:*)",
+      "Bash(uv sync:*)",
+      "Bash(docker compose ps:*)",
+      "Bash(docker compose up -d:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git switch:*)",
+      "Bash(git checkout -b:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git push:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue create:*)",
+      "Bash(gh issue comment:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr comment:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run watch:*)"
+    ],
+    "ask": [
+      "Bash(docker:*)",
+      "Bash(uv add:*)",
+      "Bash(uv run alembic downgrade:*)",
+      "Bash(gh pr merge:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Bash(cat .env:*)",
+      "Bash(rm -rf:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push origin main:*)",
+      "Bash(gh pr merge --admin:*)",
+      "Bash(gh api:*)",
+      "Bash(gh repo:*)",
+      "Bash(gh secret:*)",
+      "Bash(docker exec:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [{ "type": "command", "command": "uv run --quiet python \"$CLAUDE_PROJECT_DIR/.claude/hooks/roles.py\"" }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [{ "type": "command", "command": "uv run --quiet python \"$CLAUDE_PROJECT_DIR/.claude/hooks/formatear.py\"" }]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{ "type": "command", "command": "uv run --quiet python \"$CLAUDE_PROJECT_DIR/.claude/hooks/terminado.py\"", "timeout": 300 }]
+      }
+    ]
+  }
+}

@@ -1,0 +1,63 @@
+[project]
+name = "criba"
+version = "0.1.0"
+description = "Plataforma de Criba (réplica mínima de desarrollo) y módulo Criba Match"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.118",
+    "uvicorn[standard]>=0.37",
+    "sqlalchemy>=2.0.36",
+    "alembic>=1.14",
+    # pg8000 y no psycopg: esta máquina de desarrollo (Windows) bloquea el .dll de
+    # libpq del binario de psycopg con una política de control de aplicaciones.
+    # pg8000 es Python puro, habla el mismo protocolo y no carga librerías nativas.
+    "pg8000>=1.31",
+    "jinja2>=3.1",
+    "itsdangerous>=2.2",
+    "python-multipart>=0.0.20",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.28",
+    # `httpx2` además de `httpx`: el TestClient de starlette 1.x avisa de que
+    # usarlo con `httpx` está obsoleto. Sin esto, cada bloque de evidencia de
+    # cada PR arrastra el mismo aviso y deja de leerse.
+    "httpx2>=2.16",
+    "ruff>=0.14",
+    "poethepoet>=0.32",
+    # El E2E de humo de PR-07: Chromium headless, servidor levantado por el
+    # propio test. `uv sync` instala la librería, **no el navegador**: hace falta
+    # `uv run python -m playwright install chromium` (en CI, con `--with-deps`).
+    "pytest-playwright>=0.7",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+# Sin exclusiones: las migraciones de Match también se revisan y se formatean
+# (la regla (a) del test de enumeración de PR-04 también se les aplica).
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+# `python -m` en las tres órdenes a propósito: la máquina de desarrollo (Windows)
+# bloquea a veces los .exe de los entornos virtuales.
+[tool.poe.tasks.check]
+help = "ruff check + ruff format --check + pytest"
+sequence = [
+    { cmd = "python -m ruff check ." },
+    { cmd = "python -m ruff format --check ." },
+    { cmd = "python -m pytest" },
+]

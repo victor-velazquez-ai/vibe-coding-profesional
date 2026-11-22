@@ -1,0 +1,37 @@
+{# Fragmento propio de Match: la lista de la vacante servida por
+   `GET /match/vacantes/{vacante_id}/lista`. La vista de vacante de la plataforma
+   no depende de él (opción (b) de R3·I2); PR-20 le añade `orden=score` y la
+   sección «Pendientes de score». #}
+<div class="stack" id="candidatos">
+  <div class="table-wrap">
+    <table class="table" data-testid="tabla-match">
+      <caption class="sr-only">
+        Candidatos de {{ lista.vacante.titulo }}, por {{ lista.orden }}
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Candidato</th>
+          {% if lista.muestra_score %}<th scope="col">Score</th>{% endif %}
+          <th scope="col">Se postuló</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for fila in lista.filas %}
+          <tr data-testid="fila-match">
+            <td class="cell-main">{{ fila.candidato.nombre }}</td>
+            {% if lista.muestra_score %}
+              <td class="nowrap" data-testid="score">{{ fila.score if fila.score is not none else '—' }}</td>
+            {% endif %}
+            <td class="nowrap">{{ fila.postulacion.creada_en|fecha_corta }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td class="table__empty" colspan="{{ 3 if lista.muestra_score else 2 }}">
+              Nadie se ha postulado todavía a esta vacante.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

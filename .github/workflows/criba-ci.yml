@@ -1,0 +1,44 @@
+# CI de Criba Match (S6). Corre en cada PR del repo del curso: lo mismo que
+# `uv run python -m poethepoet check` dentro de criba/ (ruff, formato, todos los tests
+# y el E2E de humo con Chromium), contra un Postgres limpio de servicio.
+name: criba-ci
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: criba check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: criba
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: criba
+          POSTGRES_PASSWORD: criba
+          POSTGRES_DB: criba_test
+        ports: ["5434:5432"]
+        options: >-
+          --health-cmd "pg_isready -U criba -d criba_test"
+          --health-interval 3s --health-timeout 3s --health-retries 20
+    env:
+      # La base de tests es la del servicio; la de desarrollo no existe en CI.
+      CRIBA_URL_BD_TEST: postgresql+pg8000://criba:criba@localhost:5434/criba_test
+      CRIBA_URL_BD: postgresql+pg8000://criba:criba@localhost:5434/criba_dev_inexistente
+      CRIBA_SECRETO_SESION: secreto-de-ci
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0
+      - name: Dependencias exactas (uv.lock)
+        run: uv sync --locked
+      - name: Chromium para el E2E de humo (Playwright)
+        run: uv run python -m playwright install --with-deps chromium
+      - name: poe check (lint, formato, tests y E2E)
+        run: uv run python -m poethepoet check

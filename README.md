@@ -26,7 +26,7 @@ Todo debe salir en ✓ antes de la sección 1. Cada ✗ trae al lado el comando 
 | Carpeta | Qué es | Secciones |
 |---|---|---|
 | `taller/` | API de reclutamiento multiempresa hecha «a la vibe» con un solo prompt: Meridian Logistics (`sofia`) y Northstar Health (`marcus`). Aquí practicas antes de que llegue el cliente; en la sección 2 la vuelves profesional y en la 3 le das acceso controlado a tu agente | S1–S3 |
-| `criba/` | El proyecto del cliente, Criba Match, construido PR a PR desde el plan aprobado | S4–S9 (llega con su sección) |
+| `criba/` | El proyecto del cliente, Criba Match, construido PR a PR desde el plan aprobado | S4–S9 |
 | `herramientas/` | Scripts para **medir** en vez de creer: `check_leak.py` (¿marcus puede ver un candidato de Meridian?), `mutate_authz.py` (mutation test del filtro por empresa), `uso_sesiones.py` (cuánto costó y cuánto leyó tu sesión) y los materiales del piloto de S2 en `s2/` | S1 en adelante |
 | `verificar.py` | Revisa que tu equipo esté listo para el curso | S0 |
 
@@ -41,7 +41,11 @@ Cada checkpoint es un **tag de git** con el código tal como queda en ese punto 
 | `taller-pro` | + guardrails: permisos allow/ask/deny, hooks en Python y el rol `escritor-tests` | S2 |
 | `taller-ci` | + CI en GitHub Actions: `poe check` contra Postgres en UTC y el chequeo «ningún commit mezcla `tests/` con `app/`» | S3 |
 | `taller-acceso` | + roles de base de datos del agente (`agente_lectura`, `agente_metricas`), `poe psql-agente` y los permisos de `gh` | S3 |
-| `s4-diseno`, `s5-plan`, `criba-base`, `s6-…`, `s7-qa`, `s8-staging` | Criba Match, de la llamada a producción | S4–S8 (llegan con su sección) |
+| `s4-inicio` | Criba Match antes de empezar: contexto del cliente, decisiones del kickoff y la llamada con Tomás | S4 |
+| `s4-diseno` | + spec, arquitectura, mapa de fallas y ADR-001 | S4 |
+| `plan-v1`, `s5-plan` | El plan en PRs, antes y después de la revisión adversarial | S5 |
+| `criba-base` | + réplica mínima de la plataforma de Criba, la Etapa 0 construida (PR-01 a PR-07: aislamiento por empresa, cola con proveedor MOCK, E2E de humo) y los roles: `escritor-tests`, `constructor`, `revisor-pr` | S6 |
+| `s6-…`, `s7-qa`, `s8-staging` | Criba Match, del primer PR a producción | S6–S8 (llegan con su sección) |
 
 ```bash
 git tag                                            # lista los checkpoints
