@@ -49,18 +49,9 @@
                 <div class="cluster">
                   <details>
                     <summary class="btn btn--secondary btn--sm">CV</summary>
-                    <form class="form" hx-post="/candidatos/{{ fila.candidato.id }}/cv"
-                          hx-target="#candidatos" hx-swap="outerHTML">
-                      <input type="hidden" name="vacante_id" value="{{ vacante.id }}">
-                      <div class="field">
-                        <label class="field__label" for="cv-{{ fila.candidato.id }}">
-                          CV en texto
-                        </label>
-                        <textarea class="textarea" id="cv-{{ fila.candidato.id }}" name="cv_texto"
-                                  required>{{ fila.candidato.cv_texto or '' }}</textarea>
-                      </div>
-                      <button class="btn btn--primary btn--sm" type="submit">Guardar CV</button>
-                    </form>
+                    {% with candidato = fila.candidato, vacante_id = vacante.id %}
+                      {% include "_editor_cv.html" %}
+                    {% endwith %}
                   </details>
                   <form hx-post="/candidatos/{{ fila.candidato.id }}/borrar"
                         hx-target="#candidatos" hx-swap="outerHTML"
