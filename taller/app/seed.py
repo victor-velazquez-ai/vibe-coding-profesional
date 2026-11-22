@@ -1,12 +1,19 @@
+"""Datos de prueba. Se cargan a mano con `poe seed`, nunca al importar la app."""
+
 from sqlalchemy.orm import Session
 
+from app.database import get_sessionmaker
 from app.models import Candidate, Company, Recruiter
 from app.security import hash_password
 
 
-def seed_if_empty(db: Session) -> None:
+def seed_if_empty(db: Session) -> bool:
+    """Crea empresas, reclutadores y candidatos de ejemplo.
+
+    Devuelve True si ha insertado algo, False si la base ya tenia datos.
+    """
     if db.query(Company).first() is not None:
-        return
+        return False
 
     meridian = Company(name="Meridian Logistics")
     northstar = Company(name="Northstar Health")
@@ -61,3 +68,17 @@ def seed_if_empty(db: Session) -> None:
 
     db.add_all(meridian_candidates + northstar_candidates)
     db.commit()
+    return True
+
+
+def main() -> None:
+    with get_sessionmaker()() as db:
+        inserted = seed_if_empty(db)
+    if inserted:
+        print("Datos de prueba creados (sofia / marcus).")
+    else:
+        print("La base ya tenia datos: no se ha tocado nada.")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,20 +1,130 @@
 [project]
 name = "taller"
 version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.12"
+description = "Recruiting API (taller de vibe coding profesional)"
+requires-python = ">=3.13"
 dependencies = [
+    "alembic>=1.16.0",
     "bcrypt==4.0.1",
     "fastapi>=0.165.0",
     "passlib[bcrypt]>=1.7.4",
+    "psycopg[binary]>=3.2.0",
+    "pydantic-settings>=2.8.0",
     "python-jose[cryptography]>=3.5.0",
     "python-multipart>=0.0.34",
-    "sqlalchemy>=2.1.9",
+    "sqlalchemy>=2.1.7",
     "uvicorn[standard]>=0.54.0",
 ]
 
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
+    "mypy>=1.15.0",
+    "poethepoet>=0.33.0",
+    "psutil>=7.0.0",
     "pytest>=9.2.0",
+    "ruff>=0.11.0",
+    "tzdata>=2026.6",
 ]
+
+[tool.uv]
+# Proyecto "virtual": no se empaqueta, se ejecuta desde el repo.
+package = false
+
+# --------------------------------------------------------------------------
+# Tareas (poethepoet). Las herramientas se invocan como modulos (`python -m x`)
+# para que funcionen igual en Windows, macOS y Linux.
+# --------------------------------------------------------------------------
+# Nadie carga el .env aqui a proposito: pydantic-settings lo lee en la app y
+# docker compose lo lee por su cuenta. Asi `poe` funciona sin .env (p.ej. lint).
+[tool.poe.tasks.lint]
+help = "Ruff: reglas de lint"
+cmd = "python -m ruff check ."
+
+[tool.poe.tasks.format]
+help = "Ruff: formato (solo comprueba, no reescribe)"
+cmd = "python -m ruff format --check ."
+
+[tool.poe.tasks.fmt]
+help = "Ruff: aplica el formato"
+sequence = [
+    { cmd = "python -m ruff format ." },
+    { cmd = "python -m ruff check --fix ." },
+]
+
+[tool.poe.tasks.typecheck]
+help = "Mypy en modo estricto sobre app/"
+cmd = "python -m mypy app"
+
+[tool.poe.tasks.test]
+help = "Pytest contra una base Postgres temporal"
+cmd = "python -m pytest"
+
+[tool.poe.tasks.check]
+help = "Lint + formato + tipos + tests. Falla al primer error."
+sequence = ["lint", "format", "typecheck", "test"]
+
+[tool.poe.tasks.db]
+help = "Levanta Postgres 16 en Docker y espera a que acepte conexiones"
+cmd = "python -m scripts.db up"
+
+[tool.poe.tasks."db:stop"]
+help = "Para el contenedor de Postgres"
+cmd = "python -m scripts.db down"
+
+[tool.poe.tasks.migrate]
+help = "Aplica las migraciones de Alembic (upgrade head)"
+cmd = "python -m alembic upgrade head"
+
+[tool.poe.tasks.seed]
+help = "Crea las empresas y reclutadores de prueba"
+cmd = "python -m app.seed"
+
+[tool.poe.tasks.dev]
+help = "Levanta el servidor en segundo plano (idempotente)"
+cmd = "python -m scripts.dev start"
+
+[tool.poe.tasks.stop]
+help = "Para el servidor de desarrollo"
+cmd = "python -m scripts.dev stop"
+
+[tool.poe.tasks.status]
+help = "Dice si el servidor esta corriendo y en que URL"
+cmd = "python -m scripts.dev status"
+
+[tool.poe.tasks.logs]
+help = "Ultimas lineas de logs/app.log"
+cmd = "python -m scripts.dev logs"
+
+[tool.poe.tasks.init-env]
+help = "Crea .env a partir de .env.example con un SECRET_KEY aleatorio"
+cmd = "python -m scripts.init_env"
+
+# --------------------------------------------------------------------------
+# Herramientas
+# --------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "C4", "UP", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI usa `Depends()` como valor por defecto: B008 no aplica aqui.
+"app/*.py" = ["B008"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unreachable = true
+pretty = true
+
+[[tool.mypy.overrides]]
+module = ["jose.*", "passlib.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
