@@ -14,3 +14,8 @@
   3. `claude --agent revisor-pr`: revisión adversarial de solo lectura, hasta 90 % y cero bloqueantes, con un máximo de 3 rondas.
 - El merge lo hace un humano.
 - Los hooks de `.claude/hooks/` hacen cumplir los roles (el rol lo dice Claude Code: `agent_type`). Nadie termina en rojo, salvo el escritor de tests y la QA, cuyo trabajo no es dejar el código en verde.
+
+## E2E (desde la sección 7)
+
+- **Nada de `sleep`, `time.sleep` ni `wait_for_timeout` en un E2E.** Se espera a una condición: `expect(...)`, `wait_for_url`, `wait_for_selector`. Un número inventado pasa en tu máquina y falla en CI una de cada diez veces, y un test inestable enseña a todos a ignorar el rojo.
+- Cada hallazgo de QA que se arregla entra primero como E2E en rojo, en `tests/e2e/`.
