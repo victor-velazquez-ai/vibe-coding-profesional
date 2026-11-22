@@ -1,4 +1,5 @@
-from datetime import UTC, date, datetime, time
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -18,6 +19,9 @@ logger = get_logger("app.api")
 # El esquema de la base lo gestiona Alembic (`poe migrate`), no `create_all`.
 # Los datos de prueba se cargan con `poe seed`.
 app = FastAPI(title="Recruiting API")
+
+# Las fechas que pide una reclutadora son días de Austin, no de UTC (issue #6).
+ZONA_NEGOCIO = ZoneInfo("America/Chicago")
 app.add_middleware(RequestIdMiddleware)
 
 
@@ -52,11 +56,12 @@ def list_candidates(
     if stage is not None:
         query = query.filter(Candidate.stage == stage)
     if created_from is not None:
-        desde = datetime.combine(created_from, time.min, UTC)
+        desde = datetime.combine(created_from, time.min, ZONA_NEGOCIO)
         query = query.filter(Candidate.created_at >= desde)
     if created_to is not None:
-        hasta = datetime.combine(created_to, time.min, UTC)
-        query = query.filter(Candidate.created_at <= hasta)
+        # Extremo incluido: todo el día `created_to`, hasta antes de la medianoche siguiente.
+        hasta = datetime.combine(created_to + timedelta(days=1), time.min, ZONA_NEGOCIO)
+        query = query.filter(Candidate.created_at < hasta)
     return query.all()
 
 
@@ -66,7 +71,11 @@ def get_candidate(
     db: Session = Depends(get_db),
     recruiter: Recruiter = Depends(get_current_recruiter),
 ) -> Candidate:
-    candidate = db.get(Candidate, candidate_id)
+    candidate = (
+        db.query(Candidate)
+        .filter(Candidate.id == candidate_id, Candidate.company_id == recruiter.company_id)
+        .first()
+    )
     if candidate is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidato no encontrado")
     logger.info(
