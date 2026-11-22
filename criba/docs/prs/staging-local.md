@@ -274,14 +274,40 @@ E   [SQL: SELECT pg_get_viewdef(:nombre::regclass, true)]
 `42601` es error de **sintaxis** y `P: 23` es la posición del `:` en esa cadena:
 el error ocurre antes de que el servidor mire qué vista era, así que **no depende
 de nada de este PR**. Con el esquema `metricas` vacío, con las vistas puestas o
-sin base de datos, falla igual.
+sin base de datos, falla igual. Y la traza lo confirma: los dos únicos fotogramas
+son el cuerpo del test y el andamio, sin un solo archivo de `app/` ni de
+`migrations/` en medio.
+
+```
+tests/staging/test_metricas_sin_datos_personales.py:148: in test_ninguna_vista_expone_ni_lee_un_dato_del_candidato
+tests/staging/conftest.py:170: in definicion_de
+```
 
 **Lo que hace falta:** sustituir el `::` por un `CAST` en esa línea, que es la
-forma que el detector de SQLAlchemy sí reconoce:
+forma que el detector de SQLAlchemy sí reconoce. El parche, listo para
+`git apply`:
 
-```python
-consulta = text("SELECT pg_get_viewdef(CAST(:nombre AS regclass), true)")
+```diff
+--- a/criba/tests/staging/conftest.py
++++ b/criba/tests/staging/conftest.py
+@@ -166,7 +166,11 @@
+ def definicion_de(sesion: Session, vista: str) -> str:
+-    """El SQL de la vista, para mirar **lo que lee** y no solo lo que expone."""
+-    consulta = text("SELECT pg_get_viewdef(:nombre::regclass, true)")
++    """El SQL de la vista, para mirar **lo que lee** y no solo lo que expone.
++
++    `CAST(:nombre AS regclass)` y no `:nombre::regclass`: el detector de
++    parámetros de SQLAlchemy es `(?<![:\\w\\x5c]):(\\w+)(?![:\\w])`, y el
++    `(?![:\\w])` descarta `:nombre` cuando le sigue `:`. Con la forma `::` no se
++    sustituye nada, el texto sale literal y Postgres responde 42601.
++    """
++    consulta = text("SELECT pg_get_viewdef(CAST(:nombre AS regclass), true)")
+     return str(sesion.scalar(consulta, {"nombre": f"{ESQUEMA}.{vista}"}))
 ```
+
+Con eso, los 23 tests quedan medibles y `poe check` vuelve a verde (los 2 que hoy
+fallan ya recorren bien la mitad de las columnas, así que lo único que les falta
+es poder leer la definición).
 
 **Por qué no lo hago:** `tests/` es el contrato del escritor de tests y un hook me
 lo impide; y las tres salidas que me dejarían en verde sin arreglarlo —marcar los
