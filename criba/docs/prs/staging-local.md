@@ -8,16 +8,9 @@
 > se llama `staging-local.md` y los commits van marcados `(op-staging)`, que es la
 > convención que ya usó `evals-fit-score.md`.
 
-> ## ⛔ Este PR NO está terminado: hay un bloqueante y está en `tests/`
->
-> **2 de los 23 tests de `tests/staging/` no pueden pasar con ningún código de
-> producción.** No es una opinión: la consulta que el andamio de los tests usa
-> para leer la definición de las vistas es SQL inválido, y Postgres la rechaza
-> antes de mirar nada mío. El detalle, con la medición, está en
-> **«El bloqueante»** más abajo. Lo que hace falta es **una línea en
-> `tests/staging/conftest.py`**, y el constructor no toca `tests/`.
->
-> Los otros 21 están en verde. `poe check` está en **rojo** por esos 2.
+> **Resuelto:** el constructor reportó que 2 de los 23 tests no podían pasar con ningún código (ver «El bloqueante»)
+> y **no los tocó**. El escritor de tests lo verificó, lo corrigió en `tests/` y explicó por qué su rojo de la
+> primera vez no le avisó. `poe check`: 217 passed, 2 skipped (el humo del staging, sin URL), 1 xfailed.
 
 ## Qué cambia y por qué
 
