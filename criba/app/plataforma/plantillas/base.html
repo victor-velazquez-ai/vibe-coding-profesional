@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Criba{% endblock %}</title>
+  <link rel="stylesheet" href="/static/criba.css">
+  <script src="/static/vendor/htmx.min.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#contenido">Ir al contenido</a>
+
+  <header class="app-header">
+    <div class="app-header__inner">
+      <a class="brand" href="/vacantes">
+        <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true">
+          <rect width="32" height="32" rx="8" fill="#4338ca"/>
+          <path d="M9 11h14M9 16h10M9 21h6" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>
+        </svg>
+        Criba
+      </a>
+
+      <nav class="nav" aria-label="Principal">
+        <ul>
+          <li><a class="nav__link" href="/vacantes" aria-current="page">Vacantes</a></li>
+        </ul>
+      </nav>
+
+      <div class="user">
+        <div class="user__text">
+          <span class="user__name">{{ sesion.nombre }}</span>
+          <span class="user__role">{{ sesion.rol.value|replace('_', ' ') }} · {{ sesion.empresa_nombre }}</span>
+        </div>
+        <span class="avatar" aria-hidden="true">{{ sesion.iniciales }}</span>
+        <form method="post" action="/salir">
+          <button class="btn btn--ghost btn--sm" type="submit">Salir</button>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <main class="page{% block ancho %}{% endblock %}" id="contenido" tabindex="-1">
+    <div class="stack stack--lg">
+      {% if sesion.es_soporte %}
+        <div class="alert tone-warning" role="status">
+          <div class="alert__body">
+            <span class="alert__title">Contexto de soporte</span>
+            <span>Estás viendo los datos de {{ sesion.empresa_nombre }} como staff de Criba.
+              Este acceso quedó registrado.</span>
+          </div>
+        </div>
+      {% endif %}
+      {% block contenido %}{% endblock %}
+    </div>
+  </main>
+</body>
+</html>

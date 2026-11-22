@@ -1,0 +1,80 @@
+"""Subida de CV y borrado de candidato.
+
+Las dos rutas que el resto del plan necesita localizar:
+
+- `POST /candidatos/{candidato_id}/cv` → **el gancho de PR-06** (`SPEC.md`
+  alcance 7, CA9(a)), ya puesto. El CV cuelga del candidato, así que una subida
+  afecta a todas sus postulaciones abiertas y encola **una por cada una**;
+- `POST /candidatos/{candidato_id}/borrar` → **el gancho de PR-18**. Es el
+  procedimiento de borrado de hoy (`llamadas/2026-11-20-tomas.md` [04:35]: ya
+  llegan peticiones). Delega en `RepositorioEmpresa.borrar_candidato`, que es el
+  único lugar donde hay que insertar el recorrido de Match.
+"""
+
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from sqlalchemy.orm import Session
+
+from app.db import crear_sesion
+from app.match.fachada import encolar
+from app.plataforma.fragmentos import fragmento_candidatos
+from app.plataforma.repositorio import RepositorioEmpresa, SinPermiso
+from app.plataforma.sesion import Contexto, SesionQueEscribe
+
+router = APIRouter(tags=["candidatos"])
+
+BD = Annotated[Session, Depends(crear_sesion)]
+
+
+@router.post("/candidatos/{candidato_id}/cv", response_class=HTMLResponse)
+def subir_cv(
+    request: Request,
+    bd: BD,
+    sesion: SesionQueEscribe,
+    contexto: Contexto,
+    candidato_id: int,
+    cv_texto: Annotated[str, Form()],
+    vacante_id: Annotated[int, Form()],
+) -> Response:
+    repo = RepositorioEmpresa(bd, contexto.empresa_id)
+    texto = cv_texto.strip()
+    if not texto:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="El CV viene vacío.")
+    try:
+        repo.guardar_cv(candidato_id, texto)
+    except SinPermiso as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND) from exc
+    # El gancho de PR-06 (CA9(a), alcance 7): **un trabajo por postulación
+    # abierta**, porque el CV cuelga del candidato (hecho 1 de PR-01) y una
+    # enfermera postulada a enfermería y a administración necesita dos scores
+    # (R2·I4). Las postulaciones son tablas de la plataforma, así que las enumera
+    # el gancho con su propia consulta (R3·M3); de Match solo se llama a
+    # `encolar`, sin reglas propias y en esta misma transacción (R6·I2).
+    for postulacion in repo.postulaciones_abiertas(candidato_id):
+        encolar(bd, postulacion.vacante_id, candidato_id)
+    bd.commit()
+    return fragmento_candidatos(request, bd, repo, sesion, contexto, vacante_id)
+
+
+@router.post("/candidatos/{candidato_id}/borrar")
+def borrar(
+    request: Request,
+    bd: BD,
+    sesion: SesionQueEscribe,
+    contexto: Contexto,
+    candidato_id: int,
+    vacante_id: Annotated[int, Form()] = 0,
+) -> Response:
+    repo = RepositorioEmpresa(bd, contexto.empresa_id)
+    try:
+        repo.borrar_candidato(candidato_id)
+    except SinPermiso as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND) from exc
+    bd.commit()
+    if vacante_id:
+        return fragmento_candidatos(request, bd, repo, sesion, contexto, vacante_id)
+    return RedirectResponse("/vacantes", status_code=status.HTTP_303_SEE_OTHER)

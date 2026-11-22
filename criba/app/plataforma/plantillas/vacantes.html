@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block titulo %}Vacantes · Criba{% endblock %}
+
+{% block contenido %}
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Vacantes</h1>
+      <p class="page-subtitle">{{ sesion.empresa_nombre }} · {{ vacantes|length }} abiertas</p>
+    </div>
+  </div>
+
+  {% if vacantes %}
+    <div class="grid-cards">
+      {% for vacante, candidatos in vacantes %}
+        <article class="card vcard">
+          <div class="vcard__top">
+            <h2 class="vcard__title">
+              <a href="/vacantes/{{ vacante.id }}">{{ vacante.titulo }}</a>
+            </h2>
+          </div>
+          <p class="vcard__meta">{{ vacante.ciudad }} · abierta el {{ vacante.creada_en|fecha_corta }}</p>
+          <p class="vcard__excerpt">{{ vacante.descripcion }}</p>
+          <div class="vcard__footer">
+            <span class="badge tone-info">{{ candidatos }} candidato{{ '' if candidatos == 1 else 's' }}</span>
+            <a class="btn btn--secondary btn--sm" href="/vacantes/{{ vacante.id }}">Ver candidatos</a>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty">
+      <div class="empty__art" aria-hidden="true">
+        <svg class="icon" width="28" height="28" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M4 7h16M4 12h10M4 17h6"/>
+        </svg>
+      </div>
+      <p class="empty__title">Todavía no hay vacantes</p>
+      <p class="empty__text">Cuando {{ sesion.empresa_nombre }} publique una vacante, aparecerá aquí.</p>
+    </div>
+  {% endif %}
+{% endblock %}

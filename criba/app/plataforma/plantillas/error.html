@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ codigo }} · Criba</title>
+  <link rel="stylesheet" href="/static/criba.css">
+</head>
+<body>
+  <main class="page" id="contenido">
+    <div class="error-page">
+      <div class="error-page__box">
+        <p class="error-page__code">{{ codigo }}</p>
+        <h1 class="error-page__title">{{ titulo }}</h1>
+        {% if detalle %}<p class="muted">{{ detalle }}</p>{% endif %}
+        <a class="btn btn--primary" href="/vacantes">Volver a mis vacantes</a>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

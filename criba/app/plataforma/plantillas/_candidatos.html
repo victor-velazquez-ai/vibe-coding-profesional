@@ -1,0 +1,114 @@
+{# Fragmento HTMX: la lista de candidatos de una vacante, por fecha de postulación.
+   Lo intercambian las tres escrituras (postular, subir CV, borrar).
+
+   La columna de score la pinta este fragmento y la condiciona `muestra_score`,
+   que resuelve `listar_vacante` de Match con el rol, la activación de la empresa
+   y el interruptor global (PLAN.md PR-05, R5·I2, CA18, CA3, R6·B1). Sin Match,
+   la tabla es exactamente la de antes. #}
+<div class="stack" id="candidatos">
+
+  <div class="table-wrap">
+    <table class="table" data-testid="tabla-candidatos">
+      <caption class="sr-only">Candidatos de {{ vacante.titulo }}, por fecha de postulación</caption>
+      <thead>
+        <tr>
+          <th scope="col">Candidato</th>
+          {% if muestra_score %}<th scope="col">Score</th>{% endif %}
+          <th scope="col">Contacto</th>
+          <th scope="col">CV</th>
+          <th scope="col">Etapa</th>
+          <th scope="col">Se postuló</th>
+          {% if sesion.puede_escribir %}<th scope="col"><span class="sr-only">Acciones</span></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for fila in filas %}
+          <tr data-testid="fila-candidato">
+            <td class="cell-main">
+              {{ fila.candidato.nombre }}
+              <span class="cell-sub">{{ fila.notas }} nota{{ '' if fila.notas == 1 else 's' }} de entrevista</span>
+            </td>
+            {% if muestra_score %}
+              <td class="nowrap" data-testid="score">{{ fila.score if fila.score is not none else '—' }}</td>
+            {% endif %}
+            <td>
+              {{ fila.candidato.correo }}
+              <span class="cell-sub">{{ fila.candidato.telefono or '—' }}</span>
+            </td>
+            <td>
+              {% if fila.candidato.tiene_cv %}
+                <span class="badge tone-success">{{ fila.candidato.cv_texto|length }} caracteres</span>
+              {% else %}
+                <span class="badge tone-warning">sin CV</span>
+              {% endif %}
+            </td>
+            <td><span class="badge tone-neutral">{{ fila.postulacion.etapa.value|replace('_', ' ') }}</span></td>
+            <td class="nowrap">{{ fila.postulacion.creada_en|fecha_corta }}</td>
+            {% if sesion.puede_escribir %}
+              <td class="nowrap">
+                <div class="cluster">
+                  <details>
+                    <summary class="btn btn--secondary btn--sm">CV</summary>
+                    <form class="form" hx-post="/candidatos/{{ fila.candidato.id }}/cv"
+                          hx-target="#candidatos" hx-swap="outerHTML">
+                      <input type="hidden" name="vacante_id" value="{{ vacante.id }}">
+                      <div class="field">
+                        <label class="field__label" for="cv-{{ fila.candidato.id }}">
+                          CV en texto
+                        </label>
+                        <textarea class="textarea" id="cv-{{ fila.candidato.id }}" name="cv_texto"
+                                  required>{{ fila.candidato.cv_texto or '' }}</textarea>
+                      </div>
+                      <button class="btn btn--primary btn--sm" type="submit">Guardar CV</button>
+                    </form>
+                  </details>
+                  <form hx-post="/candidatos/{{ fila.candidato.id }}/borrar"
+                        hx-target="#candidatos" hx-swap="outerHTML"
+                        hx-confirm="¿Borrar a {{ fila.candidato.nombre }} y todos sus datos?">
+                    <input type="hidden" name="vacante_id" value="{{ vacante.id }}">
+                    <button class="btn btn--danger btn--sm" type="submit">Borrar</button>
+                  </form>
+                </div>
+              </td>
+            {% endif %}
+          </tr>
+        {% else %}
+          <tr>
+            <td class="table__empty"
+                colspan="{{ (6 if sesion.puede_escribir else 5) + (1 if muestra_score else 0) }}">
+              Nadie se ha postulado todavía a esta vacante.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if sesion.puede_escribir %}
+    <section class="card">
+      <header class="card__header"><h3 class="card__title">Añadir un candidato</h3></header>
+      <div class="card__body">
+        {% if disponibles %}
+          <form class="form" hx-post="/vacantes/{{ vacante.id }}/postulaciones"
+                hx-target="#candidatos" hx-swap="outerHTML">
+            <div class="field">
+              <label class="field__label" for="candidato_id">Candidato de la empresa</label>
+              <select class="select" id="candidato_id" name="candidato_id" required>
+                {% for candidato in disponibles %}
+                  <option value="{{ candidato.id }}">
+                    {{ candidato.nombre }}{{ ' · sin CV' if not candidato.tiene_cv else '' }}
+                  </option>
+                {% endfor %}
+              </select>
+              <p class="field__hint">Se postula con el CV que ya tenga cargado: aquí no se sube
+                ningún archivo.</p>
+            </div>
+            <button class="btn btn--primary" type="submit">Postular</button>
+          </form>
+        {% else %}
+          <p class="muted">Todos los candidatos de la empresa ya están postulados aquí.</p>
+        {% endif %}
+      </div>
+    </section>
+  {% endif %}
+</div>

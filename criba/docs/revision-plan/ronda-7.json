@@ -1,0 +1,75 @@
+{
+  "ronda": 7,
+  "confianza": 95,
+  "veredicto": "aprobado",
+  "bloqueantes": [],
+  "importantes": [],
+  "menores": [
+    {
+      "id": "M1",
+      "paso": "PR-05 (opción (b) a nivel de ruta: firma de `listar_vacante` y punto de enganche `contexto_candidatos`)",
+      "requisito": "CA18 (el hiring manager abre la vacante y no recibe nada de Match) y CA1 «ni log suyo» (línea de log con `request_id` y `empresa_id`).",
+      "problema": "Verificado contra `app/plataforma/sesion.py` y `app/plataforma/fragmentos.py`: la firma que el plan fija, `listar_vacante(bd, contexto, vacante_id)` con `contexto: ContextoEmpresa`, no trae lo que la función tiene que decidir. `ContextoEmpresa` solo tiene `empresa_id` y `es_soporte` (sesion.py:53-58), sin `rol`, y el plan dice que `listar_vacante` devuelve «nada de Match para el hiring manager según el rol». Tampoco existe `request_id` en ninguna parte (fabrica.py no tiene middleware) para la línea de log del test 7. Y `contexto_candidatos(repo, sesion, vacante_id)` (fragmentos.py:18) no recibe ni `bd` ni `ContextoEmpresa`: recibe un `RepositorioEmpresa` cuya sesión es privada (`_s`) y un `UsuarioSesion`. «El punto que se toca es uno» en realidad son la firma de `contexto_candidatos`/`fragmento_candidatos` y sus cuatro llamadores, o una conversión dentro de `contexto_candidatos`.",
+      "escenario": "El implementador escribe `listar_vacante(bd, contexto, vacante_id)` tal cual; para esconder Match al HM no tiene el rol y la salida más corta es decidirlo en `contexto_candidatos` («si es HM no llamo a Match»), que es una regla de Match viviendo en la plataforma, la tercera vía que PR-05 prohíbe; o rellena `request_id` con `None` y el test 7 asercia sobre un campo vacío.",
+      "arreglo": "Fijar en PR-05: (1) `listar_vacante(bd, sesion: UsuarioSesion, vacante_id)` —es el objeto tipado que ya sale de la cookie y lleva `empresa_id`, `rol` y `es_soporte`— o `ContextoEmpresa` ampliado con `rol`; el test 6 de PR-04 se enuncia igual («solo contextos tipados de la cookie»); (2) `contexto_candidatos` y `fragmento_candidatos` ganan `bd` en la firma (los cuatro llamadores ya lo tienen) y así se dice en la lista de archivos; (3) de dónde sale `request_id`: un middleware mínimo en `app/fabrica.py` (que no importa nada de Match) o un `uuid` por petición en la propia `listar_vacante`, declarado en el cuerpo."
+    },
+    {
+      "id": "M2",
+      "paso": "PR-01 (lista de «lo que la ronda 6 corrige, que ya está mezclado») y PR-02 (archivos y criterio de terminado)",
+      "requisito": "§0 punto 3 y regla 1.2 del plan («la puerta de mezcla es la ejecución de CI enlazada»); de ahí depende que el test de CA1 segunda mitad (PR-04) sea un control y no una convención.",
+      "problema": "Verificado: `.github/workflows/criba-ci.yml` sigue con `paths: [\"criba/**\", …]`, `working-directory: criba` y `cache-dependency-glob: criba/uv.lock`, así que no se dispara. El plan asigna su corrección en tres sitios y no coinciden: PR-01.md y REGISTRO R6·I6 dicen «el primer PR que se escriba después» (= PR-02); el bullet de PR-01 en PLAN.md dice «el commit estructural que abre PR-06 para las dos primeras [firma y CI], PR-02 para la tercera [docstring de `montar`]», lo que manda el yml a PR-06 y el docstring a PR-02, al revés de lo que el propio bullet del docstring dice («PR-06 lo precisa»). PR-02 no lista el yml entre sus archivos ni en su criterio de terminado.",
+      "escenario": "El desarrollador sigue el bullet de PR-01: PR-02, PR-03, PR-04 y PR-05 se mezclan con evidencia local de Windows, el yml se arregla en PR-06 y la primera corrida en ubuntu destapa diferencias de formato o de codificación en cuatro PRs ya mezclados. La regla 1.2 lo impediría solo si quien mezcla la lee antes que el bullet.",
+      "arreglo": "Corregir el bullet de PR-01: firma de la fachada y docstring de `montar` → PR-06; el yml → PR-02. Añadir `.github/workflows/criba-ci.yml` a los archivos de PR-02 (quitar `paths`, `working-directory` y el glob de caché; `cache-dependency-glob: uv.lock`) y a su criterio: «CI verde con ejecución enlazada», que es el primer paso en el que ese criterio se puede marcar."
+    },
+    {
+      "id": "M3",
+      "paso": "PR-02 (FK de `match_*` a `candidatos` sin CASCADE) × PR-05 test 5 y PR-06 (ganchos) — solo en tests, hasta PR-18",
+      "requisito": "Regla «nada se mezcla con CI en rojo» (§0 punto 3). No viola la SPEC: en producción el interruptor está apagado y no hay filas.",
+      "problema": "Verificado en `repositorio.py:157-184`: `borrar_candidato` borra notas → postulaciones → `delete(candidato)`, y a partir de PR-02 `match_trabajos.candidato_id` y `match_scores.candidato_id` son FK sin CASCADE (RESTRICT por omisión, y el plan lo exige así). Desde PR-06, con el interruptor encendido en la suite, subir un CV o postular encola filas para ese candidato; cualquier test de la Etapa 0 que luego borre a ese candidato por `POST /candidatos/{id}/borrar` recibe un `IntegrityError` (500) hasta que PR-18 inserte el recorrido de Match antes del `delete`. PR-05 test 5 hace exactamente «subir CV, postular y borrar» y se escribe antes de que los ganchos existan.",
+      "escenario": "PR-05 test 5 sube el CV del candidato X y luego borra a X; pasa en PR-05. Se mezcla PR-06: el gancho de `subir_cv` encola un trabajo para X, el borrado viola la FK y el test 5 queda rojo en PR-06 sin que PR-06 haya tocado la vista.",
+      "arreglo": "Escribir en PR-05 que el test 5 borra un candidato distinto del que sube CV y del que se postula (o uno sin postulaciones abiertas), con la razón: «hasta PR-18, un candidato con filas de Match no se puede borrar». Y en PR-06, en «qué queda sin hacer», anotar explícitamente ese estado: borrar un candidato con trabajo o score falla por FK hasta PR-18; ningún test de las Etapas 0-1 debe borrar candidatos con filas de Match."
+    },
+    {
+      "id": "M4",
+      "paso": "PR-05 (dos plantillas para la misma lista: `_candidatos.html` de la plataforma y `_lista.html` de Match)",
+      "requisito": "CA8 («el conteo de candidatos renderizados es igual al total») y CA18 (sin score para el HM) se tendrán que asertar sobre la plantilla que realmente se vea.",
+      "problema": "Con (b), la página `GET /vacantes/{id}` y los tres POST pintan la lista con `_candidatos.html` (ahora con columna de score condicionada por rol), y `GET /match/vacantes/{id}/lista` —el fragmento que PR-20 extiende con `orden=score` y la sección de pendientes— pinta la misma lista con `_lista.html`. Dos plantillas para una lista divergen: la columna por rol se mantiene en una y no en la otra, y el test de CA8 de PR-20 pasa sobre `_lista.html` mientras la página que Dana abre por el menú sigue mostrando `_candidatos.html`. El entorno Jinja ya es compartido (`app/plantillas.py`, `ChoiceLoader`), así que no hace falta duplicar.",
+      "escenario": "PR-20 añade la sección «Pendientes de score» a `_lista.html` y asercia CA8 contra el endpoint de Match; la vista de vacante, que sigue rendering `_candidatos.html` vía `listar_vacante`, no la tiene, y el 15-ene la página abierta desde el menú no muestra pendientes arriba hasta que alguien pulsa el control HTMX.",
+      "arreglo": "PR-05 fija una sola plantilla de lista: el endpoint de Match renderiza `_candidatos.html` (o `_candidatos.html` pasa a incluir el fragmento de Match), con el `id=\"candidatos\"` estable, de modo que PR-20 extienda un solo archivo y CA8/CA18 se asercien en una plantilla. `_lista.html` desaparece o queda como el include que las dos rutas comparten."
+    },
+    {
+      "id": "M5",
+      "paso": "PR-07 (E2E con Playwright: aislamiento de base de datos y dependencias)",
+      "requisito": "Regla 1.2 (CI verde con ejecución enlazada) y el criterio de PR-07 «corre de verdad en CI».",
+      "problema": "Verificado: `tests/conftest.py` aísla cada test con una transacción con savepoint sobre una conexión y sustituye `crear_sesion` por esa sesión; funciona con `TestClient` en proceso. Playwright necesita un servidor HTTP real: o uvicorn en un hilo compartiendo la misma `Session` (no es segura entre hilos) o un servidor aparte que no ve lo sembrado dentro del savepoint. PR-07 lista `tests/e2e/conftest.py` pero no dice qué estrategia usa (datos comprometidos y truncado al final, o servidor en hilo con la sesión del test), y `pytest-playwright` no está en `pyproject.toml` (solo el paso `playwright install` del workflow). `tests/e2e/` tampoco existe en el repo (PR-01.md dice «existe vacío»; no hay `.gitkeep`).",
+      "escenario": "Se escribe el E2E reutilizando la fixture `aplicacion`; el hilo del servidor y el test comparten la sesión, el guion 4 (reiniciar con `CRIBA_MATCH_ACTIVO` apagada) exige recrear la app a mitad de sesión, y el E2E sale inestable: se marca «no bloqueante de CI» el mismo día, que es lo que el riesgo de PR-07 ya teme.",
+      "arreglo": "PR-07 declara su estrategia de base: conftest propio con datos sintéticos comprometidos en `criba_test` y `TRUNCATE … RESTART IDENTITY CASCADE` al terminar cada guion (como `semilla._vaciar`), servidor uvicorn en hilo con la app real y sin override de sesión; `pytest-playwright` en el grupo `dev` de `pyproject.toml`; y el guion 4 arranca su propio servidor con la variable apagada. Añadir `tests/e2e/.gitkeep` en PR-02 o PR-07."
+    }
+  ],
+  "descartados_por_exoticos": [
+    {
+      "idea": "`candidatos` no tiene columnas `direccion` ni `foto` (solo nombre, correo, telefono, links, cv_texto), y el CV es solo texto, sin PDF: dos de los seis datos de §1a y el «PDF escaneado» de CA13 solo pueden vivir en el texto libre o como `cv_texto` nulo.",
+      "por_que": "Es un hecho del esquema que afecta a PR-08 (fixtures de CA2) y PR-11 (CA13), no a la Etapa 0. Se anota para la revisión de la Etapa 1: PR-08 tendrá que cubrir dirección y foto por patrón en el texto, no por campo."
+    },
+    {
+      "idea": "Un hiring manager de Meridian pidiendo `GET /match/vacantes/{id_northstar}/lista`: ¿403 (rol) o 404 (empresa)? El plan no fija el orden de las dos comprobaciones.",
+      "por_que": "Ninguna de las dos respuestas filtra datos; CA1 se escribe con sesiones de reclutador y CA18 con el HM de su propia empresa. Lo decide el implementador (tenencia antes que rol, para no revelar existencia) sin consecuencia en la SPEC."
+    },
+    {
+      "idea": "El comentario de `pyproject.toml:45-46` sigue diciendo que la regla (a) también se aplica a las migraciones, contra lo que R6·I3 fijó (DDL de Alembic fuera por ruta).",
+      "por_que": "Texto desactualizado que PR-04 corrige al escribir el test; no cambia conducta ni confunde a nadie que lea PR-04."
+    },
+    {
+      "idea": "`migrations/env.py` solo importa `app.plataforma.modelos`; sin importar `app.match.repositories.modelos`, `Base.metadata` no conoce las tablas `match_*` y `semilla._vaciar` no las lista.",
+      "por_que": "La 0001 es DDL explícito y no necesita metadata para aplicarse; el `TRUNCATE … CASCADE` sobre `candidatos` arrastra las tablas de Match igual. PR-02 añadirá el import para autogenerate; trivial."
+    },
+    {
+      "idea": "`CRIBA_MATCH_ACTIVO` leída con `lru_cache` como `ajustes()`: el test 4 de PR-06 y el test 6 de PR-05 la apagan a mitad de suite y verían el valor cacheado.",
+      "por_que": "Detalle de implementación con solución obvia (`cache_clear` o lectura sin caché); la fixture `aplicacion` ya crea la app por test."
+    },
+    {
+      "idea": "PR-05 crea `listar_vacante(bd, …)` con sesión antes de que PR-06 corrija `encolar` y `borrar_candidato` a `(bd, …)`: durante un PR la fachada tiene dos convenciones de firma.",
+      "por_que": "Sin efecto: `encolar` y `borrar_candidato` siguen lanzando `NotImplementedError` hasta PR-06 y la superficie cerrada no cambia. Si se quiere, la corrección de firma puede ir en el commit estructural de PR-05 en vez del de PR-06; es cosmético."
+    }
+  ]
+}

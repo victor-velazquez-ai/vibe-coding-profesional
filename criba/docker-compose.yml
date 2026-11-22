@@ -1,0 +1,24 @@
+# Postgres 16 de desarrollo y de tests para la réplica de la plataforma.
+# Un solo contenedor, dos bases: criba_dev (desarrollo) y criba_test (tests).
+# El puerto 5434 evita chocar con un Postgres local en 5432.
+services:
+  db:
+    image: postgres:16
+    container_name: criba-db
+    environment:
+      POSTGRES_USER: criba
+      POSTGRES_PASSWORD: criba
+      POSTGRES_DB: criba_dev
+    ports:
+      - "5434:5432"
+    volumes:
+      - criba-db:/var/lib/postgresql/data
+      - ./scripts/crear-bd-test.sql:/docker-entrypoint-initdb.d/10-crear-bd-test.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U criba -d criba_dev"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  criba-db:
