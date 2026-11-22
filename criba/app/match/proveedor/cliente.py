@@ -161,6 +161,22 @@ def correr_cli(argumentos: Sequence[str], entrada: str, timeout: float) -> str:
 
     No registra nada: quien registra es `ProveedorClaudeCLI`, y registra la
     decisión y la latencia, nunca el cuerpo (F12).
+
+    **El timeout no está garantizado si el ejecutable es un envoltorio `.CMD`**,
+    y es un hecho medido y no un temor (R?·M3). Al vencer, `subprocess.run` mata
+    el proceso que lanzó —`cmd.exe`— y después llama a `communicate()`, que
+    espera el EOF de unas tuberías que el **nieto** (`node`) sigue teniendo
+    abiertas: la llamada no vuelve. Medido en esta máquina con un `.cmd` que
+    duerme 600 s y `timeout=2`: con un proceso directo levanta `TimeoutExpired`
+    a los 2,0 s; con el envoltorio **no había vuelto a los 40 s** (la medición
+    está en el cuerpo del PR). En Linux no pasa: el ejecutable es el proceso.
+
+    Qué significa: donde esto corra sobre Windows con el envoltorio, la mitad de
+    CA7/F11 que protege el hilo del proceso web **no está cubierta**, y no se
+    arregla aquí —matar el árbol de procesos es conducta nueva en la única puerta
+    del paso y ningún test la ejerce—. Es entrada de la **pregunta 9 de `PLAN.md`
+    §9** (dónde corre esto en producción y con cuántos *workers*), sin respuesta
+    hasta el 1-dic, y queda declarado en el cuerpo del PR.
     """
     completado = subprocess.run(
         list(argumentos),
@@ -223,7 +239,8 @@ def _esquema() -> str:
 
 def _argumentos(idioma: str) -> tuple[str, ...]:
     """La línea de órdenes. `shutil.which` porque en Windows el ejecutable es un
-    `claude.CMD` y no hay `claude` pelado en el `PATH` de un subproceso."""
+    `claude.CMD` y no hay `claude` pelado en el `PATH` de un subproceso. Lo que
+    ese envoltorio le cuesta al timeout está medido en `correr_cli` (R?·M3)."""
     return (
         shutil.which(EJECUTABLE) or EJECUTABLE,
         "-p",  # el modo no interactivo: sin esto el proceso espera una entrada
