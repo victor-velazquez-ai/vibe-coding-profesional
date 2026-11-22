@@ -13,3 +13,9 @@ evals/resultados/*.json
 # versiona (perf/resultados/.gitkeep) y los numeros reales quedan pegados en
 # perf/MEDICION.md, que si se versiona.
 perf/resultados/*.csv
+
+# Los logs JSON del staging local: una linea por trabajo cerrado y las del
+# adaptador del proveedor. Son salida de una corrida, y su retencion es pregunta
+# abierta de F12 (decide Priya): fuera del repo. El directorio se versiona
+# (staging/logs/.gitkeep); su contenido no.
+staging/logs/*.jsonl

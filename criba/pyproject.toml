@@ -76,3 +76,50 @@ sequence = [
 [tool.poe.tasks.evals]
 help = "arnes de evals del fit score con el proveedor MOCK (sin red, sin costo)"
 cmd = "python -m evals --proveedor mock --k 3"
+
+# --- el staging local con la configuracion de produccion --------------------
+#
+# Cinco tareas, en el orden en que se corren (el orden completo, con lo que hay
+# que mirar en cada paso, esta en `RUNBOOK.md`):
+#
+#   poe staging-arriba     levanta el contenedor y migra con el rol dueno
+#   poe staging-sembrar    datos sinteticos de `app/plataforma/semilla.py`
+#   poe staging-app        el proceso web, en el 8001
+#   poe staging-ejecutor   el proceso del ejecutor (ADR-001: en produccion va dentro del web)
+#   poe staging-humo       el E2E de humo contra el staging ya levantado
+#
+# **Quien corre cada cosa.** Las dos primeras van con `CRIBA_URL_BD` del **dueno**
+# de la base, puesta aqui mismo: migrar es DDL y sembrar hace
+# `TRUNCATE ... RESTART IDENTITY`, y `criba_app` no puede ni debe poder hacer
+# ninguna de las dos (`staging/roles.sql`). Las tres ultimas van con
+# `staging/staging.env`, que trae la URL de `criba_app` y la configuracion de
+# produccion. Esa separacion es la mitad del ejercicio: si una tarea de la app
+# necesitara la URL del dueno, el staging no estaria probando lo que dice probar.
+#
+# La contrasena del dueno es un valor de una maquina local, igual que la de
+# `docker-compose.staging.yml` y las de `staging/roles.sql`. No es un secreto de
+# produccion (F19).
+[tool.poe.tasks.staging-arriba]
+help = "levanta el Postgres del staging (5455) y lo migra con el rol dueno"
+sequence = [
+    { cmd = "docker compose -f docker-compose.staging.yml up -d --wait" },
+    { cmd = "python -m alembic upgrade head" },
+]
+env = { CRIBA_URL_BD = "postgresql+pg8000://criba:criba@localhost:5455/criba_staging" }
+
+[tool.poe.tasks.staging-sembrar]
+help = "siembra el staging con los datos sinteticos de la semilla (rol dueno)"
+cmd = "python -m app.plataforma.semilla"
+env = { CRIBA_URL_BD = "postgresql+pg8000://criba:criba@localhost:5455/criba_staging" }
+
+[tool.poe.tasks.staging-app]
+help = "la app del staging en el 8001, con la configuracion de produccion"
+cmd = "uv run --env-file staging/staging.env python -m uvicorn app.main:app --port 8001"
+
+[tool.poe.tasks.staging-ejecutor]
+help = "el ejecutor como proceso aparte del staging (pasadas en bucle, Ctrl+C para parar)"
+cmd = "uv run --env-file staging/staging.env python -m app.match.comandos.ejecutor"
+
+[tool.poe.tasks.staging-humo]
+help = "el E2E de humo contra el staging levantado (sin CRIBA_URL_STAGING se salta)"
+cmd = "uv run --env-file staging/staging.env python -m pytest tests/staging/test_humo_staging.py"
