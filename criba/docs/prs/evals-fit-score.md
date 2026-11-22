@@ -245,9 +245,24 @@ y sin red, y que el código de salida es **0**: un caso que no pasa es un dato d
 calidad, no un repo roto.
 
 **4b · el código de salida distingue «el modelo falló» de «el camino falló»**
-(salida real): con el MOCK, `exit 0` con 36 intentos fallidos. El 1 está reservado
-a los intentos **sin respuesta** (`ErrorDelProveedor`), y es lo que `poe evals`
-vigila.
+(salidas reales). Con el MOCK, **exit 0** con 36 intentos fallidos (bloque 4a). El
+**1** está reservado a los intentos **sin respuesta**, y así se midió: lanzando el
+arnés con `--proveedor claude` y **el CLI fuera del `PATH`** del proceso hijo, que
+es el `OSError` que el adaptador convierte en error tipado:
+
+```
+$ (subprocess con PATH = C:\Windows\System32)
+exit = 1
+caso     banda            bnd men inv iny   pass^1 pass^k
+fs-01    error_del_camino  NO  NO   —   — 0/1 (0%)      NO
+           · ErrorDelProveedor: no se pudo lanzar «claude»: no está instalado o no es ejecutable
+TOTAL    1 casos · 1 intentos · pass^1 0/1 (0%) · pass^k 0%
+costo: 0.0000 USD · modelos: —
+```
+
+Las dos cosas que esto demuestra: la banda es **`error_del_camino`** y **no
+`insuficiente`** —un fallo del proveedor no se le atribuye al candidato (CA13,
+F8)— y el intento no devuelve un cero por ninguna vía.
 
 **4c · la primera pasada real: 12 llamadas, k=1** (salida real, medición manual,
 `0,2980 USD`):
