@@ -24,6 +24,7 @@ pseudonimización (PR-08), lease y reintentos (PR-14).
 from __future__ import annotations
 
 import inspect
+from collections.abc import Callable
 
 import pytest
 from fastapi import FastAPI
@@ -78,16 +79,27 @@ async def test_el_circuito_completo_toma_el_empresa_id_de_la_fila_de_la_cola(
     sesion: Session,
     northstar: EmpresaDePrueba,
     meridian: EmpresaDePrueba,
+    activar_match: Callable[[str], None],
     proveedor_contado: ProveedorContado,
 ) -> None:
     """Encolar → una pasada del bucle → una fila en `match_scores` por empresa.
 
-    Las **dos** empresas de la fixture encolan a propósito: entre PR-06 y PR-10
-    `encolar` todavía no comprueba la activación por empresa (R2·M2), y no hay
-    fuga porque el único proveedor que existe es el doble —en producción, el
-    MOCK— y nada sale de Criba (regla 1.5). Lo que este test sostiene es F5: el
-    score de cada empresa sale del `empresa_id` **de su fila de la cola**.
+    Las **dos** empresas de la fixture encolan a propósito, porque lo que este
+    test sostiene es F5: el score de cada empresa sale del `empresa_id` **de su
+    fila de la cola**, y con una sola empresa eso no se puede medir.
+
+    **Qué cambió con PR-10, y por qué se toca este test** (`PLAN.md` PR-10, R2·M2):
+    la versión anterior encolaba Meridian sin activarla, y lo decía: «entre PR-06
+    y PR-10 `encolar` todavía no comprueba la activación por empresa». PR-10
+    inserta esa comprobación **dentro de `encolar`**, así que desde PR-10 Meridian
+    sin activar no deja fila y este test dejaría de tener dos empresas en la cola
+    —dejaría de medir F5—. La activación es un estado de configuración y la
+    fixture de PR-03 existe para fijarlo: aquí se enciende **a propósito y solo en
+    este test**, que no prueba D7. «Meridian sin anexo» sigue siendo el valor por
+    omisión de la fixture, y D7 y CA3 se prueban en
+    `test_activacion_por_empresa.py`, que es su sitio.
     """
+    activar_match(meridian.slug)
     encolar(sesion, northstar.vacante.id, northstar.candidato.id)
     encolar(sesion, meridian.vacante.id, meridian.candidato.id)
 

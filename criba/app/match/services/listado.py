@@ -85,30 +85,36 @@ def listar_vacante(
     if vacante is None:
         return None
 
+    repo = RepositorioDeMatch(bd, ContextoDeEmpresa.desde_la_peticion(contexto))
     filas_de_hoy = plataforma.candidatos_de_vacante(vacante_id)
-    con_match = _match_visible(rol, plataforma)
-    scores = _scores_por_candidato(bd, contexto, vacante_id) if con_match else {}
+    con_match = _match_visible(rol, repo)
+    scores = _scores_por_candidato(repo, vacante_id) if con_match else {}
     filas = [_fila(fila, scores.get(fila.candidato.id)) for fila in filas_de_hoy]
 
     _registrar(contexto, vacante_id, con_match, len(filas), comienzo)
     return ListaDeVacante(vacante=vacante, filas=filas, muestra_score=con_match)
 
 
-def _match_visible(rol: Rol, plataforma: RepositorioEmpresa) -> bool:
-    """Las tres condiciones, en un solo sitio: interruptor, rol y activación."""
-    ajustes = ajustes_match()
-    if not ajustes.activo or rol not in ROLES_QUE_VEN_MATCH:
+def _match_visible(rol: Rol, repo: RepositorioDeMatch) -> bool:
+    """Las tres condiciones, cada una donde se decide: interruptor, rol y D7.
+
+    **La activación por empresa ya no se lee aquí** (PLAN.md PR-10): este módulo
+    leía `match_activado` por su cuenta, y entonces D7 se decidía en dos sitios
+    —aquí y en el camino de escritura, cuando llegara— que es lo que el criterio
+    de terminado de PR-10 prohíbe. Se pregunta al repositorio, que es el punto
+    único de acceso a datos (`docs/arquitectura.md` §4 y §5.3).
+
+    El orden importa: con el **interruptor global apagado** o con un rol que no ve
+    Match (CA18), no se le pregunta nada al repositorio.
+    """
+    if not ajustes_match().activo or rol not in ROLES_QUE_VEN_MATCH:
         return False
-    empresa = plataforma.empresa()
-    return empresa is not None and ajustes.match_activado(empresa.slug)
+    return repo.empresa_activada()
 
 
-def _scores_por_candidato(
-    bd: Session, contexto: ContextoEmpresa, vacante_id: int
-) -> dict[int, ScoreDeMatch]:
+def _scores_por_candidato(repo: RepositorioDeMatch, vacante_id: int) -> dict[int, ScoreDeMatch]:
     """**Una** consulta para toda la lista, que es lo que el guardia de R6·M4
     asercia: el número de consultas no crece con el número de filas (F27)."""
-    repo = RepositorioDeMatch(bd, ContextoDeEmpresa.desde_la_peticion(contexto))
     return {fila.candidato_id: fila for fila in repo.scores_de_vacante(vacante_id)}
 
 

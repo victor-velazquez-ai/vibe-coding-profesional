@@ -69,8 +69,11 @@ def encolar(bd: Session, vacante_id: int, candidato_id: int) -> None:
     dentro del savepoint de `tests/conftest.py`.
 
     Con el **interruptor global apagado** no encola nada y no toca la base de
-    datos (R4·I1, R6·B1). La comprobación de activación **por empresa** entra
-    dentro de esta misma función en PR-10 (D7, CA3).
+    datos (R4·I1, R6·B1). Y **sin la activación de esa empresa** tampoco deja
+    ninguna fila (D7, CA3, PR-10): la comprobación vive dentro de `encolar` y la
+    decide el repositorio, así que los dos ganchos de la plataforma llaman aquí
+    sin traer regla propia. No levanta excepción: la ruta de subida de CV de una
+    empresa sin anexo sigue respondiendo 200 y guardando su CV.
     """
     cola.encolar(bd, vacante_id, candidato_id)
 
