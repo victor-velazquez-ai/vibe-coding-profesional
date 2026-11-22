@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[oc]
+.venv/
+*.egg-info
+# Secretos y datos locales: nunca al repo
+.env
+*.db
+logs/
+.run/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.claude/estado/
+.claude/settings.local.json

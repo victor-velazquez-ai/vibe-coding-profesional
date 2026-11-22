@@ -1,0 +1,9 @@
+Implementa el cambio de etapa de un candidato.
+
+Spec:
+- PATCH /candidates/{id}/stage con {"stage": "..."} cambia la etapa y devuelve el candidato.
+- Etapas válidas: contacto, entrevista, oferta, contratado, descartado. Cualquier otra: 422.
+- Solo reclutadores de la misma empresa: si el candidato es de otra empresa o no existe, 404. Sin credenciales, 401.
+- Contratado y descartado son finales: cambiarles la etapa devuelve 409.
+
+Los tests ya los escribió el escritor de tests en tests/test_etapa.py: haz que pasen. Termina con `uv run poe check` en verde.

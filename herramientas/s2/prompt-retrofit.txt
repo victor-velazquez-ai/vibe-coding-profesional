@@ -1,0 +1,16 @@
+Convierte este prototipo en un repo profesional, diseñado para que un agente pueda verificar su propio trabajo. No cambies el comportamiento de la API.
+
+1. Python 3.13 (`requires-python = ">=3.13"` y `.python-version` en 3.13).
+2. Herramientas de desarrollo con uv: ruff, mypy (estricto sobre `app/`), pytest y poethepoet.
+3. Tareas poe:
+   - `poe check`: ruff (lint y formato), mypy y pytest, en ese orden; si algo falla, falla.
+   - `poe dev`: levanta el servidor en segundo plano y guarda un pidfile. Si ya está corriendo, no lanza otro: dice el pid y la URL.
+   - `poe stop`, `poe logs` (las últimas líneas del log), `poe db` (Postgres arriba), `poe migrate` y `poe seed`.
+4. Postgres 16 en Docker en lugar de SQLite: `docker-compose.yml` con nombre de proyecto `taller` y puerto 5433 en tu máquina. Configuración con pydantic-settings y un `.env.example`; ningún secreto en el repo (tampoco la clave de los tokens).
+5. Alembic, con una migración inicial de las tablas actuales. Nada de `create_all` ni de seeds al importar la app: las empresas y reclutadores de prueba se crean con `poe seed`.
+6. Logs en JSON, una línea por evento, a `logs/app.log`, con `request_id` en cada línea: un middleware lo genera (o respeta el header `X-Request-ID`) y lo devuelve en la respuesta.
+7. Los tests corren contra Postgres de verdad: cada corrida crea su propia base temporal aplicando las migraciones de Alembic, y la borra al final, para poder correr varias copias del repo en paralelo.
+8. Todo tiene que funcionar igual en Windows, macOS y Linux. En las tareas, invoca las herramientas como módulos (`python -m pytest`, `python -m mypy`…), no con sus lanzadores `.exe`.
+9. Escribe un README.
+
+No crees CLAUDE.md todavía. Termina corriendo `uv run poe check` y pega la salida real.
