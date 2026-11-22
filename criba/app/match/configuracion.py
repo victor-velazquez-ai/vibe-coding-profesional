@@ -17,6 +17,12 @@ Lo que apaga de `encolar`, del bucle del ejecutor y de los dos ganchos es de
 PR-06. Lo que **no** apaga nunca es la vista de vacante de la plataforma: con el
 interruptor apagado responde 200, siempre.
 
+Y el **modo de proveedor** (`CRIBA_MATCH_PROVEEDOR`, el **MOCK** por omisión), que
+añade **PR-09**: qué proveedor usa Match es configuración de entorno, como los
+otros tres estados, y por eso el nombre de la variable y sus dos valores se
+declaran aquí. La **fábrica** que los lee vive en `proveedor/cliente.py`, porque
+este módulo no puede importar al adaptador sin un ciclo.
+
 Nada de esto vive en una columna de `empresas`: PR-01 comprobó que la plataforma
 no tiene dónde guardarlo (hechos 5 y 7) y F16 no se paga por un ajuste.
 """
@@ -34,6 +40,28 @@ VARIABLE_GLOBAL = "CRIBA_MATCH_ACTIVO"
 VARIABLE_DE_EMPRESAS = "CRIBA_MATCH_EMPRESAS_ACTIVADAS"
 VARIABLE_DE_IDIOMA = "CRIBA_MATCH_IDIOMA_POR_OMISION"
 VERDADEROS = frozenset({"1", "si", "sí", "true", "on"})
+
+# **Qué proveedor usa Match**, y es la cuarta declaración de este módulo (PR-09).
+# Vive aquí y no en el adaptador por la misma razón que las otras tres: es
+# configuración por **variable de entorno**, nunca una constante en el código
+# (F19, R6·I5). La **fábrica** que la lee sí vive en el adaptador
+# (`proveedor/cliente.py`): este módulo no puede importarlo —el adaptador importa
+# de aquí `Proveedor` y `RespuestaDelProveedor`— y un ciclo de imports sería el
+# precio de tenerlo todo junto.
+#
+# El valor por omisión es el **MOCK**, que no sale del proceso, y es el único que
+# la CI corre (N4, decisión de Víctor del 22-nov-2026; `docs/arquitectura.md` §2).
+# Es la misma forma que la activación por empresa (R4·I1) y el interruptor global
+# (R6·I5): un entorno nuevo, o un despliegue al que se le olvidó la variable, nace
+# en el modo que no puede sacar un CV de Criba.
+VARIABLE_DE_MODO = "CRIBA_MATCH_PROVEEDOR"
+MODO_MOCK = "mock"
+# `claude_cli` y no `claude`: el valor nombra **el adaptador**, no al proveedor, y
+# el adaptador de este repo es el CLI por subproceso (N4). Que los dos no se
+# confundan es parte del control: ningún valor parecido —`claude`, `real`,
+# `produccion`— selecciona el cliente real, así que una errata en la variable no
+# saca CVs de Criba.
+MODO_CLAUDE_CLI = "claude_cli"
 
 # **Supuesto nuestro** (R6·M3): la única empresa activada en la v1 opera en
 # Estados Unidos (D20, `SPEC.md` §10). `usuarios.idioma` no existe (hecho 8 de
@@ -73,6 +101,7 @@ class AjustesDeMatch:
     activo: bool
     empresas_activadas: frozenset[str]
     idioma_por_omision: str
+    modo_proveedor: str
 
     def match_activado(self, slug: str) -> bool:
         """D7 y CA3 en un solo estado, porque el plan trata las dos condiciones
@@ -96,4 +125,8 @@ def ajustes_match() -> AjustesDeMatch:
         activo=os.environ.get(VARIABLE_GLOBAL, "").strip().lower() in VERDADEROS,
         empresas_activadas=frozenset(p.strip() for p in crudo.split(",") if p.strip()),
         idioma_por_omision=os.environ.get(VARIABLE_DE_IDIOMA, IDIOMA_POR_OMISION),
+        # Sin variable, o con la variable vacía, **el MOCK** (PR-09). El `or` es
+        # el valor por omisión y no un `if` del llamador: así la fábrica del
+        # adaptador compara contra un modo siempre declarado.
+        modo_proveedor=os.environ.get(VARIABLE_DE_MODO, "").strip().lower() or MODO_MOCK,
     )
