@@ -1,3 +1,5 @@
+from datetime import UTC, date, datetime, time
+
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -41,13 +43,37 @@ def login(
 @app.get("/candidates", response_model=list[CandidateOut])
 def list_candidates(
     stage: str | None = Query(default=None),
+    created_from: date | None = Query(default=None),
+    created_to: date | None = Query(default=None),
     db: Session = Depends(get_db),
     recruiter: Recruiter = Depends(get_current_recruiter),
 ) -> list[Candidate]:
     query = db.query(Candidate).filter(Candidate.company_id == recruiter.company_id)
     if stage is not None:
         query = query.filter(Candidate.stage == stage)
+    if created_from is not None:
+        desde = datetime.combine(created_from, time.min, UTC)
+        query = query.filter(Candidate.created_at >= desde)
+    if created_to is not None:
+        hasta = datetime.combine(created_to, time.min, UTC)
+        query = query.filter(Candidate.created_at <= hasta)
     return query.all()
+
+
+@app.get("/candidates/{candidate_id}", response_model=CandidateOut)
+def get_candidate(
+    candidate_id: int,
+    db: Session = Depends(get_db),
+    recruiter: Recruiter = Depends(get_current_recruiter),
+) -> Candidate:
+    candidate = db.get(Candidate, candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidato no encontrado")
+    logger.info(
+        "candidate_viewed",
+        extra={"context": {"candidate_id": candidate.id, "recruiter": recruiter.username}},
+    )
+    return candidate
 
 
 @app.post("/candidates", response_model=CandidateOut, status_code=status.HTTP_201_CREATED)
