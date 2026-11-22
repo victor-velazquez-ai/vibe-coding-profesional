@@ -1,0 +1,101 @@
+{
+  "ronda": 4,
+  "confianza": 80,
+  "veredicto": "cambios",
+  "bloqueantes": [
+    {
+      "id": "B1",
+      "paso": "PR-06 (gancho de entrada) y PR-01 (hechos del esquema real); afecta a PR-23 CA9(a) y a la operación de PR-16",
+      "requisito": "SPEC alcance 1 (score por par candidato–vacante a la que aplicó) y alcance 4 (los scores ya están guardados cuando se abre la vacante); CA7 (CV recibido → score ≤10 min); CA20 (100 % de las tres vacantes con score o motivo el 15-ene)",
+      "problema": "El único productor automático de trabajos es el gancho en la ruta de subida de CV (PR-06, §2). Una postulación nueva de un candidato que ya tiene su CV en la plataforma no sube ningún CV, así que no encola nada. Bajo el supuesto que el propio plan usa por defecto (el CV cuelga del candidato; «una enfermera con postulaciones abiertas a enfermería y a administración», R2·I4), el par nuevo (candidato, vacante) nunca se puntúa. El comando de PR-16 solo cubre las tres vacantes de la demo y solo cuando alguien lo reejecuta a mano; tras la demo no hay nada que puntúe una postulación sin CV nuevo. Ningún test del plan crea una postulación sin subir un CV, así que la suite queda verde.",
+      "escenario": "8-ene: un candidato de Northstar con CV cargado en noviembre se postula desde su perfil a la vacante de enfermería. No hay subida de CV → cero filas en `match_trabajos`. El 15-ene Dana abre enfermería y ese candidato (y todos los que se postularon igual desde la operación del 29-dic) aparecen en «Pendientes de score» sin score ni motivo: CA20 falla salvo reejecución manual del comando la víspera. Después de la demo, con ~9.000 candidatos/mes, ninguna postulación hecha con CV existente cumple CA7 ni el alcance 4, con CA9(a) verde porque solo mira «subir CV nuevo».",
+      "arreglo": "PR-01 anota un hecho 6: dónde se crea la postulación (ruta o servicio de la plataforma) y si subir CV es parte de postularse. PR-06 añade un segundo gancho en ese punto —lado plataforma, mismo patrón que R3·M3— que llama a `encolar(vacante_id, candidato_id)` de la fachada, con test: «crear postulación con CV ya existente → un trabajo para ese par». Si PR-01 confirma que el CV cuelga de la postulación y toda postulación sube CV, el segundo gancho se omite con la razón escrita en el cuerpo del PR. PR-23 CA9(a) añade el caso «postulación nueva con CV existente → score sin intervención». §8 cita los dos ganchos en CA7 y CA20."
+    }
+  ],
+  "importantes": [
+    {
+      "id": "I1",
+      "paso": "PR-03 (fixture «Meridian sin anexo»), PR-10 (comprobación de D7), PR-06 (gancho desplegable) y PR-01 (hechos del esquema)",
+      "requisito": "CA3 / D7 (sin anexo firmado no se crea ningún registro de Match); regla 1.7 y CA16/D15 (ningún dato derivado de un candidato real sin vía de borrado)",
+      "problema": "El estado «Match activado + anexo de subprocesador firmado» por empresa no tiene casa en el plan: no está en las tablas de PR-02, ni en configuración, ni entre los cinco hechos que PR-01 anota, y PR-03 lo necesita antes que PR-10. Y el plan no dice qué estado tiene producción entre H0 y la operación: entre PR-06 y PR-10 el gancho encola para cualquier empresa (lo dice el propio PR-06), y después de PR-10 para quien esté «activado» en un sitio que nadie definió. Si la plataforma despliega `main` de forma continua —el plan no lo sabe, pregunta 9—, el gancho entra en producción el 5-dic.",
+      "escenario": "5-dic se mezcla y despliega PR-06. Cada CV subido en cualquiera de las 40 empresas encola un trabajo y el MOCK escribe un score fijo en `match_scores` para candidatos reales de Meridian (registro de Match de una empresa sin anexo: CA3) y de Northstar, dos semanas antes de que exista el borrado de PR-18 (dato derivado de candidato real sin vía de borrado, regla 1.7). Si la vista de PR-05/PR-06 ya muestra score, reclutadoras de Northstar ven scores inventados por el MOCK sobre candidatos reales semanas antes de la demo ([00:16] «no le creen» antes de empezar).",
+      "arreglo": "(1) PR-01 anota dónde vive el estado de activación por empresa; si hay que crearlo, va en configuración de Match junto al idioma por omisión (hecho 5), no en una migración sobre `empresas` (F16), con valor por omisión «ninguna empresa activada». PR-03 lo usa en la fixture. (2) PR-06 añade un interruptor global de Match, apagado por omisión fuera de tests, que convierte `encolar` y `montar(app)` en no-op, con test de cero filas y ruta no montada; encenderlo en producción pasa a ser un punto explícito de la lista de precondiciones de la operación (PR-16). (3) PR-10 añade el caso «ninguna empresa activada en configuración → cero filas, cero llamadas»."
+    },
+    {
+      "id": "I2",
+      "paso": "PR-17 (arnés del conjunto dorado) y PR-16 (precondición 5)",
+      "requisito": "D3 modificado, condición 2 (solo hacia un proveedor con retención cero y sin entrenamiento, verificado por escrito por Priya, SPEC «Privacidad» §1b); CA2",
+      "problema": "PR-17 depende solo del código de PR-16 y corre en una base aparte. La verificación escrita de Priya es precondición de «la operación» de PR-16, no de las pasadas del conjunto dorado, y PR-09 solo bloquea el cliente real «en producción». Las 10 vacantes son datos reales de Northstar (anonimizados, no sintéticos): ~5.000 CVs saliendo de Criba, la mayor salida de la v1 según el propio plan, sin la condición 2 de D3 modificado ni la activación de D7 en su checklist.",
+      "escenario": "15-dic llega el conjunto dorado. Priya no ha contestado (plazo del 12-dic vencido), F1 es «la fila más alta del mapa» y la fecha de H1b aprieta, así que se corre el arnés en el entorno aparte con el cliente real habilitado por configuración → ~5.000 CVs reales anonimizados hacia un proveedor cuya retención cero nadie confirmó. Sin recuperación hacia atrás, y fuera de la lista que el día de la operación sí se mira.",
+      "arreglo": "PR-17 lista sus propias precondiciones de ejecución, no solo de mezcla: verificación escrita de Priya del proveedor (la misma de PR-16, precondición 5), Northstar activada en ese entorno por la misma comprobación de PR-10, test 3a de PR-08 en verde, y una línea en `docs/operaciones/` por pasada (fecha, nº de scores, gasto, versión de prompt). §7 lo dice en voz alta: el conjunto dorado no se puntúa contra el proveedor real sin ese correo, aunque llegue antes."
+    },
+    {
+      "id": "I3",
+      "paso": "PR-20, PR-22 y pregunta abierta 15 de §9",
+      "requisito": "CA11 / D11 (las tres razones en el idioma del reclutador, en los dos sentidos)",
+      "problema": "El plan declara que con una fila por par CA11 «se cumple solo cuando `usuarios.idioma` coincide con el defecto de la empresa» y deja la salida (un trabajo por idioma distinto entre los usuarios con acceso) propuesta a Tomás sin fecha. Pero la operación de ~680 scores sí tiene fecha (semana del 29-dic) y la idempotencia de PR-14 deja esos scores intactos: una respuesta afirmativa después de la operación obliga a regenerar en la semana de la demo, con «recalcular vacante» limitado a 1/día (D23) y «re-puntuado masivo» como no-objetivo (§24).",
+      "escenario": "Tomás responde «sí, un trabajo por idioma» el 8-ene. Los 680 scores de la demo existen solo en 'en'; una reclutadora de Northstar con 'es' ve las razones en inglés en la demo (CA11 incumplido a la vista del cliente) o se improvisa un comando de regeneración fuera del plan, con PR-23 recién mezclado y el techo de diciembre ya gastado en CA14.",
+      "arreglo": "Dar a la pregunta 15 la misma fecha límite que a las de Priya (12-dic) y añadirla a las acciones de §7. PR-22 deja `encolar` preparado para N idiomas por par (la clave de PR-02 ya lo permite), de modo que la respuesta sea un cambio de configuración y no de código. Si no hay respuesta el 12-dic, el supuesto por omisión (idioma de la empresa) se escribe en el registro de la operación como decisión de Tomás por omisión, no como supuesto nuestro."
+    }
+  ],
+  "menores": [
+    {
+      "id": "M1",
+      "paso": "PR-18 (test 1 de CA16) y regla 1.7",
+      "requisito": "CA16 (recorrer todas las tablas de Match buscando `candidato_id` y hash)",
+      "problema": "pytest no admite `xfail` por aserción: el marcador es por función de test, y el `pytest.xfail()` imperativo detiene el test en ese punto. Con el test 1 escrito como un único recorrido, «las dos aserciones con `xfail(strict=True)`» se convierten en todo el recorrido en XFAIL hasta que responda Priya.",
+      "escenario": "PR-18 se mezcla con el test 1 marcado entero; entre el 12-dic y la respuesta de Priya alguien rompe el borrado de `match_scores` en PR-20 o PR-23 → el test falla, pero «fallar» es lo esperado (XFAIL) y CI sigue verde; se descubre al quitar el marcador, con la operación encima.",
+      "arreglo": "Parametrizar el test 1 por tabla del inventario (una ejecución por tabla), de modo que solo los dos parámetros `match_auditoria_scores` y `auditoria_accesos` lleven `xfail(strict=True)` y el resto siga siendo aserción dura. Decirlo en el cuerpo de PR-18 y en la regla 1.7."
+    },
+    {
+      "id": "M2",
+      "paso": "PR-21 (medición de T1 en staging, §0 punto 2)",
+      "requisito": "CA5 / ADR-001 T1 (p95 con la cola trabajando)",
+      "problema": "La medición dice «cola alimentada con trabajos sintéticos» pero no con qué proveedor. Con el MOCK, que responde al instante, los 500 trabajos se agotan en segundos y T1 se mide con la cola vacía; con el cliente real cuesta techo y exige la verificación de Priya aunque los CV sean sintéticos.",
+      "escenario": "Se mide T1 con el MOCK por omisión, da 120 ms, PR-C2 no se dispara, y la contención real de F11 (CPU de pseudonimización y escrituras con latencia de red de segundos por trabajo) queda sin medir ni en staging ni en producción (§10.2).",
+      "arreglo": "PR-21 declara el doble usado: MOCK con latencia simulada igual a la medida en PR-15 (`asyncio.sleep`), al tope de concurrencia de PR-14, y mantiene la cola llena durante las 50 peticiones (asercionar que al terminar quedaban trabajos pendientes). Entorno, latencia simulada y tope van en el cuerpo del PR junto al número."
+    },
+    {
+      "id": "M3",
+      "paso": "PR-16 (comando y consulta de cobertura)",
+      "requisito": "CA1 / D4 (toda consulta de Match con `empresa_id` inyectado desde el repositorio); coherencia con R3·M3",
+      "problema": "El comando tiene que enumerar los candidatos de cada vacante de la lista, y eso son tablas de la plataforma (`postulaciones`), igual que la consulta de cobertura. R3·M3 fijó que `encolar` no consulta tablas de la plataforma salvo la fila de la vacante y la pertenencia del candidato; el plan no dice por dónde enumera el comando, y la regla (a) de PR-04 no lo detecta porque no es tabla `match_*`.",
+      "escenario": "El comando hace `select(postulaciones).where(vacante_id in …)` sin contexto de empresa; funciona para la demo, y queda como el primer patrón de Match leyendo tablas de negocio fuera del contexto, que es lo que §4 de arquitectura quiere evitar.",
+      "arreglo": "PR-16 dice que el comando y la consulta de cobertura enumeran candidatos a través de un método del repositorio construido con el contexto «desde la vacante» (PR-04), y añade esa lectura a la enumeración de contextos del PR-04 como lectura con empresa, no como operación de sistema."
+    },
+    {
+      "id": "M4",
+      "paso": "PR-08 (test 3a)",
+      "requisito": "CA2 / §1a (dirección entre los seis datos que no salen)",
+      "problema": "3a limpia del texto libre «toda cadena que esté en los campos estructurados» y, por patrón, solo correo, teléfono y URL. La dirección solo se limpia si el candidato la rellenó como campo estructurado; si está únicamente en el cuerpo del CV, sale.",
+      "escenario": "Candidato con campo de dirección vacío en la plataforma y «1420 Elm St, Austin TX 78701» en la cabecera del CV: CA2 verde (la fixture trae la dirección en el campo), el payload sale con la dirección.",
+      "arreglo": "Añadir a la fixture de 3a un CV con la dirección solo en el texto libre y declarar en el cuerpo del PR qué se hace: patrón de dirección (número + vía + código postal) con su tasa de falsos positivos medida en las fixtures, o, si se considera tarea con falsos negativos, decirlo y mandarlo a la pregunta 1 de §9 para Priya con ese nombre, no como «entidad que §1a no nombra»."
+    }
+  ],
+  "descartados_por_exoticos": [
+    {
+      "idea": "Al llegar al techo de D12, todos los nuevos quedan pendientes >60 min y la alerta de CA7 se dispara en cada pasada de reconciliación",
+      "por_que": "Es ruido de alerta, no una violación: CA7 y CA10 se cumplen tal cual, y el destinatario de la alerta sigue sin definir (pregunta 8), así que no hay a quién aturdir todavía."
+    },
+    {
+      "idea": "Cambio de mes en `match_gasto_mes` con trabajos en vuelo que cargan al mes equivocado",
+      "por_que": "A ~12 scores/hora el exceso es despreciable frente a 1.500 USD; la ronda 2 ya descartó el mismo argumento para llamadas en vuelo."
+    },
+    {
+      "idea": "Empates de score y orden no determinista entre recargas",
+      "por_que": "Cosmético; se resuelve con un segundo criterio de orden (fecha) que cualquier implementador pone, y no viola ningún CA."
+    },
+    {
+      "idea": "La fila de `auditoria_accesos` con la lista de 500 candidatos obliga a que el recorrido de CA16 busque `candidato_id` dentro de arrays o JSON",
+      "por_que": "Depende de la decisión de Priya ya pedida (pregunta 2 de §9) y de la granularidad que PR-19 fija; es detalle del mismo test que ya está marcado como pendiente."
+    },
+    {
+      "idea": "Los ejecutores de los workers web y el comando de PR-16 compiten por `SKIP LOCKED` durante la operación, superando el tope declarado",
+      "por_que": "La operación es fuera de horario y el tope por proceso ya está declarado en PR-14 y en el registro; el exceso es acotado y no toca ningún CA."
+    },
+    {
+      "idea": "El proveedor cambia de versión de modelo entre la operación de diciembre y la demo (F26)",
+      "por_que": "Ya está mapeado como consulta manual en `docs/fallas.md` y en la pregunta 9 de la SPEC; no hay escenario de dos semanas que el plan deba cubrir con código."
+    }
+  ]
+}

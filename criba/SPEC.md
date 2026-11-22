@@ -31,7 +31,7 @@ Alcance de activación: **solo Northstar** hasta la demo (§8). Meridian no firm
 9. **Aislamiento multiempresa en un solo punto de acceso a datos**, con tests (D4, N9, issue `02`).
 10. **Auditoría por score:** hash del CV, versión del prompt, versión del modelo, fecha. Sin texto del CV (D15).
 11. **Borrado** de todo lo que Match derive de un candidato, en ≤7 días (D15).
-12. **Carga inicial:** puntuar el histórico abierto de Northstar (~2.000 candidatos) y las tres vacantes de la demo (§4, §8).
+12. **Carga inicial:** puntuar **las tres vacantes de Texas de la demo** (~680 candidatos: enfermería ~500, administración ~120, TI ~60 — §4, §8). **El histórico abierto de Northstar (~2.000 candidatos) sale de la v1** por decisión de Víctor del 22-nov-2026, aceptada por Tomás por correo el mismo día; queda en `PLAN.md` §10 «Después de la demo» con su alcance geográfico pendiente de la ley 144 (D20, pregunta abierta 4).
 13. **UI responsive** desde 360 px, Safari/Chrome en iPhone y Android recientes, con el estilo actual (D22).
 
 ## No-objetivos: qué NO entra en esta versión
@@ -117,8 +117,9 @@ Dada la vista de vacante con 500 candidatos en un viewport de 360 px de ancho; c
 → test: `tests/match/test_movil_360.py` — Playwright a 360×640, asercia `scrollWidth <= clientWidth` y la visibilidad de los tres elementos.
 
 **CA20 · Cobertura para la demo** (D17, §4, §8)
-Dado el 15-ene-2027 y la cuenta de Northstar; cuando se consulta la cobertura; entonces las tres vacantes de Texas (enfermería ~500, administración ~120, TI ~60) y el histórico abierto (~2.000 candidatos) tienen el 100 % de sus candidatos con score o con un motivo de «sin score» registrado.
+Dado el 15-ene-2027 y la cuenta de Northstar; cuando se consulta la cobertura; entonces **las tres vacantes de Texas** (enfermería ~500, administración ~120, TI ~60) tienen el 100 % de sus candidatos con score o con un motivo de «sin score» registrado.
 → test: `tests/match/test_cobertura_demo.py` — consulta de cobertura que falla si queda algún candidato sin score y sin motivo.
+*El histórico abierto (~2.000 candidatos) estaba en este criterio y **sale de la v1** por la decisión de Víctor del 22-nov-2026, aceptada por Tomás: la demo se hace solo con las tres vacantes de Texas. La carga del histórico, con su propia precondición legal, está en `PLAN.md` §10.*
 
 ## Privacidad
 
@@ -142,7 +143,7 @@ Dado el 15-ene-2027 y la cuenta de Northstar; cuando se consulta la cobertura; e
 | Ancho mínimo de pantalla | 360 px sin desbordamiento horizontal | CA19 |
 | Costo mensual de toda la plataforma | techo 1.500 USD, alerta al 80 % | CA10 |
 | «Recalcular vacante» | máx. 1/día/vacante | CA9 |
-| Carga para la demo | 3 vacantes + ~2.000 candidatos del histórico, 100 % con score o motivo | CA20 |
+| Carga para la demo | 3 vacantes de Texas (~680 candidatos), 100 % con score o motivo | CA20 |
 | Volumen de referencia | ~9.000 candidatos/mes, ~600 vacantes abiertas en la plataforma; solo Northstar activo en la v1 | `docs/contexto.md`, [04:06], §8 |
 
 ## Preguntas que siguen abiertas
