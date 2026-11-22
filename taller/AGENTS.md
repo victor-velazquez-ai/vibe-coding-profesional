@@ -24,5 +24,6 @@ Reclutadores de prueba: `sofia` / `sofia1234` (Meridian Logistics) y `marcus` / 
 4. Di qué NO probaste.
 
 ## Trampas
+- `tests/` es del rol escritor-tests: si un test está mal o es imposible de cumplir, no lo cambies; explica cuál y por qué, y detente.
 - Cada corrida de tests crea su propia base temporal en Postgres: si no conecta, corre `uv run poe db`.
 - En Windows, Smart App Control puede bloquear wheels recién publicadas (`os error 4551`): no es tu código.
