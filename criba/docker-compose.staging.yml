@@ -1,0 +1,44 @@
+# El Postgres del **staging local**: otro contenedor, otro puerto y otro volumen
+# que el de desarrollo (`docker-compose.yml`, contenedor `criba-db`, puerto 5434).
+#
+# Que no compartan nada es el punto: el staging corre con la configuración de
+# producción —Match encendido y el proveedor real— y con dos roles que la base de
+# desarrollo no tiene. Un `docker compose down -v` del staging no puede llevarse
+# la base de desarrollo ni la de tests, y una migración probada aquí no deja
+# tocada `criba_test`.
+#
+#   docker compose -f docker-compose.staging.yml up -d --wait   # o `poe staging-arriba`
+#
+# `roles.sql` se monta en `/docker-entrypoint-initdb.d/` y corre **al
+# inicializar el volumen**, como dueño de la base: ahí nacen `criba_app` y
+# `agente_metricas`. Las migraciones NO corren aquí: las corre el dueño después,
+# con `poe staging-migrar`, porque `criba_app` no puede hacer DDL.
+#
+# El guion es idempotente, así que se puede volver a correr sobre un volumen ya
+# inicializado (el orden está en `RUNBOOK.md`).
+services:
+  db:
+    image: postgres:16
+    container_name: criba-staging-db
+    environment:
+      POSTGRES_USER: criba
+      POSTGRES_PASSWORD: criba
+      POSTGRES_DB: criba_staging
+      # UTC explícito: las dos vistas de `metricas` cortan el día en UTC y el
+      # staging no puede contradecir a producción por la zona de la máquina.
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      # Solo 127.0.0.1: este contenedor no se expone a la red de la casa.
+      - "127.0.0.1:5455:5432"
+    volumes:
+      - criba-staging-db:/var/lib/postgresql/data
+      - ./staging/roles.sql:/docker-entrypoint-initdb.d/10-roles.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U criba -d criba_staging"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  criba-staging-db:
