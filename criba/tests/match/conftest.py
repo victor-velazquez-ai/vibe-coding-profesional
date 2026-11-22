@@ -13,7 +13,6 @@ Todo el material es **sintético** (D3 modificado, D15, F12).
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator
-from contextlib import suppress
 from dataclasses import dataclass
 from functools import lru_cache
 from itertools import count
@@ -36,7 +35,6 @@ from tests.dobles.cli import (
     NOMBRE_DE_LA_COSTURA,
     CLIDoblado,
     adaptador,
-    cli_que_prohibe_llamadas,
     salida_del_cli,
 )
 from tests.dobles.proveedor import RAZONES, ProveedorContado
@@ -262,24 +260,12 @@ def _caminos(rutas: Iterable[object]) -> Iterator[str]:
 # --- PR-09 · el cliente real del proveedor ----------------------------------
 
 
-@pytest.fixture(autouse=True)
-def ningun_cli_de_verdad(monkeypatch: pytest.MonkeyPatch) -> None:
-    """**Ningún test lanza el CLI del proveedor de verdad** (PR-09, N4).
-
-    Es `autouse` a propósito: el día que exista el adaptador real, el olvido de un
-    doble en un test cualquiera no puede convertirse en un proceso `claude -p`
-    lanzado desde la suite —con un CV dentro—. Con el doble prohibitivo puesto por
-    omisión, ese olvido es un test rojo y no una llamada.
-
-    El `suppress` es lo que hace que esta fixture **no** sea un error de montaje
-    mientras PR-09 no está escrito: hasta entonces no hay costura que doblar y la
-    fixture es un no-op. El rojo del paso vive en sus `assert`, no aquí.
-    """
-    with suppress(AssertionError):
-        puerta = adaptador()
-        monkeypatch.setattr(
-            puerta.modulo_de_la_costura, NOMBRE_DE_LA_COSTURA, cli_que_prohibe_llamadas()
-        )
+# La fixture `autouse` que deja la costura del subproceso doblada y prohibida
+# —`ningun_cli_de_verdad`— **se movió a `tests/conftest.py`** en la ronda de
+# revisión de PR-09 (M4): aquí solo cubría `tests/match`, y el alcance que su
+# propio docstring declara es la suite entera (`tests/e2e` levanta la app real y
+# corre el bucle del ejecutor, que pregunta por el proveedor configurado). Su
+# detector, también fuera de este directorio, es `tests/test_guardia_del_cli.py`.
 
 
 @pytest.fixture
