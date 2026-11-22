@@ -46,9 +46,14 @@ from fastapi import FastAPI
 from sqlalchemy.orm import Session
 
 from app.match import configuracion as configuracion_de_match
-from app.match.cola.ejecutor import una_pasada
+from app.match.cola.ejecutor import pasadas, una_pasada
 from app.match.cola.trabajos import encolar
-from app.match.configuracion import VARIABLE_DE_EMPRESAS, AjustesDeMatch, ajustes_match
+from app.match.configuracion import (
+    VARIABLE_DE_EMPRESAS,
+    VARIABLE_GLOBAL,
+    AjustesDeMatch,
+    ajustes_match,
+)
 from app.plataforma.repositorio import RepositorioEmpresa
 from tests.dobles.proveedor import ProveedorContado, proveedor_que_prohibe_llamadas
 from tests.match.conftest import (
@@ -98,12 +103,11 @@ def activacion(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., None]]
 # --- 1 · CA3 · el camino de la request ------------------------------------
 
 
-def test_un_cv_de_meridian_por_la_ruta_de_la_plataforma_no_llama_ni_deja_fila(
+async def test_un_cv_de_meridian_por_la_ruta_de_la_plataforma_no_llama_ni_deja_fila(
     sesion: Session,
     northstar: EmpresaDePrueba,
     meridian: EmpresaDePrueba,
     entrar: Entrar,
-    proveedor_contado: ProveedorContado,
 ) -> None:
     """CA3, D7 · «llega un CV nuevo suyo» → cero llamadas **y cero filas**.
 
@@ -115,7 +119,16 @@ def test_un_cv_de_meridian_por_la_ruta_de_la_plataforma_no_llama_ni_deja_fila(
     Las **dos puertas** de PR-06 en el mismo test, porque las dos llaman a la
     misma función (`encolar`) y la comprobación es una: la subida de CV (CA9(a),
     alcance 7) y la postulación sin CV nuevo (R4·B1).
+
+    **El doble va en el camino, no al lado** (revisión de PR-10, M1). La versión
+    anterior pedía `proveedor_contado` y asersiaba `llamadas == 0` sin conectarlo
+    a nada: ese contador no podía ser otra cosa que 0 y la aserción afirmaba algo
+    que no comprobaba. Ahora la pasada del bucle corre de verdad con el doble que
+    **prohíbe** toda llamada (CA3, PLAN.md PR-10 test 1), y el control de verdad
+    es el `== 0` que devuelve: `una_pasada` captura por trabajo, así que un
+    `LlamadaProhibida` quedaría como un trabajo en `error` y el test pasaría sola.
     """
+    proveedor = proveedor_que_prohibe_llamadas()
     cliente = entrar(meridian.reclutador)
     otro = sembrar_candidatos(sesion, meridian, 1, postular=False)[0]
 
@@ -140,7 +153,12 @@ def test_un_cv_de_meridian_por_la_ruta_de_la_plataforma_no_llama_ni_deja_fila(
         repo = repo_de(sesion, empresa)
         assert repo.trabajos() == [], f"{empresa.slug} dejó una fila en match_trabajos"
         assert repo.scores() == [], f"{empresa.slug} dejó una fila en match_scores"
-    assert proveedor_contado.llamadas == 0
+
+    # Y el bucle recorre la cola con el doble prohibitivo dentro: sin fila que
+    # tomar devuelve 0 y nadie llama a nadie. Si cualquiera de las dos puertas
+    # hubiera encolado, esta pasada tomaría esa fila y devolvería 1.
+    assert await una_pasada(sesion, proveedor) == 0, "había algo que puntuar en la cola"
+    assert proveedor.llamadas == 0, "salió una llamada por una empresa sin anexo firmado"
 
 
 # --- 2 · F5 · el camino sin cookie, antes del INSERT ------------------------
@@ -214,6 +232,83 @@ async def test_al_tomar_un_trabajo_de_una_empresa_sin_anexo_no_se_llama_al_prove
     tomado = [t for t in repo.trabajos() if t.id == trabajo.id]
     assert [t.estado for t in tomado] != ["listo"], "el trabajo quedó cerrado sin puntuarse"
     assert repo_de(sesion, northstar).scores() == [], "un score cruzó de empresa"
+
+
+# --- 3 bis · el trabajo rechazado sale de la cabeza de la cola -------------
+
+
+async def test_el_trabajo_rechazado_sale_de_pendiente_y_no_bloquea_la_cola_de_northstar(
+    sesion: Session,
+    northstar: EmpresaDePrueba,
+    meridian: EmpresaDePrueba,
+    activacion: Callable[..., None],
+    proveedor_contado: ProveedorContado,
+) -> None:
+    """Revisión de PR-10 (I1) · lo que el rechazo hace **además** de no llamar.
+
+    El test 3 comprueba la comprobación en sí —cero llamadas, cero scores— y deja
+    sin protección las dos líneas que la acompañan en `cola/ejecutor.py`: sacar el
+    trabajo de `pendiente` y devolver 1. Las dos son conducta de este paso y las
+    dos tienen una consecuencia operativa que el propio comentario del código
+    describe:
+
+    - `siguiente_trabajo_pendiente` toma **la fila más antigua en `pendiente`**
+      (FIFO por `creado_en`, y el id como desempate). Un trabajo de Meridian que
+      se quedara en `pendiente` se volvería a tomar en cada pasada y **bloquearía
+      en cabeza de cola los trabajos de Northstar para siempre**: la empresa que
+      sí firmó el anexo dejaría de recibir scores, sin un solo error visible, y la
+      fila entraría además en la alerta de pendientes >60 min de CA7;
+    - con `return 0`, el bucle `pasadas` se detendría en el primer trabajo
+      rechazado aunque haya pendientes detrás, con el mismo efecto.
+
+    Así que lo que se asercia es el **efecto de los dos**, no su implementación:
+    la pasada hace dos cosas (`hechas == 2`), Northstar acaba con su score y una
+    sola llamada, y Meridian no acaba ni con score ni con un trabajo en
+    `pendiente`. PR-14 reescribe justamente la toma del trabajo y los reintentos
+    (PLAN.md PR-14) y este test es lo que impide que vuelva a dejar la fila
+    «pendiente para reintentar».
+
+    **Qué estado le queda sigue siendo pregunta abierta** de este paso —PLAN.md no
+    lo dice, CA3 no lo pide y `estado_trabajo` solo admite los cuatro valores de la
+    0001—, así que aquí no se fija `error`: se asercia que no es `pendiente` (no
+    vuelve a la cola) ni `listo` (nadie lo puntuó).
+    """
+    activacion(northstar.slug, meridian.slug)
+    de_meridian = encolar(sesion, meridian.vacante.id, meridian.candidato.id)
+    de_northstar = encolar(sesion, northstar.vacante.id, northstar.candidato.id)
+    assert de_meridian is not None and de_northstar is not None, "con las dos activadas, dos filas"
+    # La de Meridian va **en cabeza**: las dos comparten `creado_en` —`now()` es el
+    # de la transacción— y el desempate es el id. Si no fuera así, el bloqueo de
+    # cabeza de cola no se estaría ejerciendo y este test no probaría nada.
+    assert de_meridian.id < de_northstar.id
+
+    # Se retira el anexo de Meridian (D7) y su fila se queda en la cola: el
+    # escenario literal de §5.3, ahora con una empresa activada esperando detrás.
+    activacion(northstar.slug)
+
+    hechas = await pasadas(sesion, proveedor_contado)
+
+    assert hechas == 2, (
+        f"dos trabajos, dos pasadas, y salieron {hechas}: con menos, la pasada del rechazo no "
+        "cuenta como hecha y el bucle se detiene en la cabeza de la cola; con más, el trabajo "
+        "rechazado volvió a `pendiente` y se toma otra vez en cada pasada. Northstar, detrás, "
+        "no se puntúa en ninguno de los dos casos"
+    )
+    assert proveedor_contado.llamadas == 1, "una llamada, la de la empresa con anexo firmado"
+
+    de_norte = repo_de(sesion, northstar)
+    assert [score.score for score in de_norte.scores()] == [proveedor_contado.score], (
+        "la empresa activada no recibió su score: el trabajo de la empresa sin anexo bloqueó "
+        "la cabeza de la cola (FIFO) y nadie lo vio como un error"
+    )
+    de_meridian_repo = repo_de(sesion, meridian)
+    assert de_meridian_repo.scores() == [], "se guardó un score de una empresa sin anexo"
+    (rechazado,) = [t for t in de_meridian_repo.trabajos() if t.id == de_meridian.id]
+    assert rechazado.estado not in ("pendiente", "listo"), (
+        "el trabajo rechazado se quedó en la cola (se volverá a tomar en cada pasada) o se "
+        "cerró como puntuado"
+    )
+    assert [t.estado for t in de_norte.trabajos()] == ["listo"]
 
 
 # --- 4 · la vista de la empresa sin anexo ----------------------------------
@@ -349,18 +444,90 @@ def _nombres_de_la_activacion() -> set[str]:
     return nombres
 
 
+def _etiqueta(ruta: Path) -> str:
+    """La ruta relativa al repo, o el nombre si el archivo es de fuera.
+
+    Los módulos de mentira del control de abajo viven en el `tmp_path` de pytest,
+    que no está bajo `RAIZ`: con `relative_to` a secas, el control reventaba con
+    un `ValueError` en vez de aserciar.
+    """
+    return str(ruta.relative_to(RAIZ)) if ruta.is_relative_to(RAIZ) else ruta.name
+
+
+# El **valor** de la variable de entorno, no su nombre (revisión de PR-10, M2):
+# `os.environ.get("CRIBA_MATCH_EMPRESAS_ACTIVADAS")` no menciona ningún símbolo de
+# la configuración, así que el recorrido por `Attribute` y `Name` no la ve.
+VALORES_DE_LA_ACTIVACION = frozenset({VARIABLE_DE_EMPRESAS})
+
+
 def _lecturas_de_la_activacion(ruta: Path, nombres: set[str]) -> list[str]:
     fuente = ruta.read_text(encoding="utf-8")
     hallados = []
     for nodo in ast.walk(ast.parse(fuente)):
         leido = ""
         if isinstance(nodo, ast.Attribute):
-            leido = nodo.attr
+            leido = nodo.attr if nodo.attr in nombres else ""
         elif isinstance(nodo, ast.Name):
-            leido = nodo.id
-        if leido in nombres:
-            hallados.append(f"{ruta.relative_to(RAIZ)}:{nodo.lineno}: {leido}")
+            leido = nodo.id if nodo.id in nombres else ""
+        elif isinstance(nodo, ast.Constant) and isinstance(nodo.value, str):
+            leido = nodo.value if nodo.value in VALORES_DE_LA_ACTIVACION else ""
+        if leido:
+            hallados.append(f"{_etiqueta(ruta)}:{nodo.lineno}: {leido}")
     return hallados
+
+
+def _formas_de_leer_la_activacion(nombres: set[str]) -> tuple[tuple[str, str], ...]:
+    """Las tres formas de leer el estado por empresa, como **fuente de mentira**.
+
+    Los dos primeros módulos se escriben con un símbolo **derivado** —el que la
+    configuración exporta hoy—, y el tercero con el **valor** de la variable de
+    entorno, que es el que no menciona ningún símbolo y por eso se cuela.
+    """
+    atributo = sorted(nombre for nombre in nombres if nombre.islower())[0]
+    constante = sorted(nombre for nombre in nombres if not nombre.islower())[0]
+    return (
+        ("atributo", f"def puede(slug):\n    return ajustes_match().{atributo}(slug)\n"),
+        ("nombre", f"import os\n\nCRUDO = os.environ[{constante}]\n"),
+        ("literal", f'import os\n\nCRUDO = os.environ.get("{VARIABLE_DE_EMPRESAS}", "")\n'),
+    )
+
+
+FORMA_DEL_INTERRUPTOR_GLOBAL = f'import os\n\nACTIVO = os.environ.get("{VARIABLE_GLOBAL}", "")\n'
+
+
+def test_el_guardia_de_forma_ve_las_tres_maneras_de_leer_la_activacion(tmp_path: Path) -> None:
+    """Revisión de PR-10 (M2) · el guardia del test 6, comprobado a sí mismo.
+
+    El test 6 afirma «la comprobación de D7 se lee en un solo sitio», y esa
+    afirmación vale lo que vea su recorrido del árbol. Mirando solo `Attribute` y
+    `Name`, una lectura por **literal de cadena** —`os.environ.get("CRIBA_MATCH_
+    EMPRESAS_ACTIVADAS")` en un router o en un service— no toca ninguno de los
+    nombres derivados y pasa el guardia, que es exactamente la segunda regla de D7
+    fuera del repositorio que el test quiere impedir (F5, §5.3).
+
+    Hoy no hay ninguna lectura así en `app/`, así que el hueco no se ve desde el
+    test 6: se ve desde aquí, sobre módulos de mentira, sin tocar la aplicación.
+
+    El **negativo** es la otra mitad: el interruptor global (`CRIBA_MATCH_ACTIVO`)
+    es otra cosa y lo leen la fachada, `encolar` y el bucle, los tres **fuera** de
+    `DONDE_SE_LEE_LA_ACTIVACION` (R6·I5). Si el guardia lo arrastrara, el test 6
+    se pondría rojo por el motivo equivocado y alguien lo relajaría entero.
+    """
+    nombres = _nombres_de_la_activacion()
+    for forma, fuente in _formas_de_leer_la_activacion(nombres):
+        modulo = tmp_path / f"lectura_por_{forma}.py"
+        modulo.write_text(fuente, encoding="utf-8")
+        assert _lecturas_de_la_activacion(modulo, nombres), (
+            f"el guardia no ve la lectura por {forma}: una lectura así en `app/` fuera del "
+            "punto único de acceso a datos sería una segunda regla de D7 sin que nadie la vea"
+        )
+
+    interruptor = tmp_path / "lectura_del_interruptor_global.py"
+    interruptor.write_text(FORMA_DEL_INTERRUPTOR_GLOBAL, encoding="utf-8")
+    assert _lecturas_de_la_activacion(interruptor, nombres) == [], (
+        "el guardia arrastró el interruptor global, que se lee a propósito fuera del "
+        "repositorio (fachada, `encolar`, el bucle): el test 6 nacería rojo por otra cosa"
+    )
 
 
 def test_la_comprobacion_de_d7_se_lee_en_un_solo_sitio_y_no_en_el_router() -> None:
