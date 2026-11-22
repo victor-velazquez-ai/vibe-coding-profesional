@@ -1,0 +1,157 @@
+{
+  "ronda": 2,
+  "confianza": 72,
+  "veredicto": "cambios",
+  "bloqueantes": [
+    {
+      "id": "B1",
+      "paso": "PR-18 (y regla 1.7 / precondiciones de la operación de carga en PR-16)",
+      "requisito": "CA16 (D15, R8, [04:35]): «no queda ningún dato suyo ni identificador que apunte a él en ninguna tabla o cola de Match»; el test recorre todas las tablas buscando candidato_id y el hash",
+      "problema": "El plan exige PR-18 «en verde en la suite completa» antes de la carga inicial y, en el mismo paso, deja la fila de `match_auditoria_scores` (hash del CV + referencia al score/candidato) fuera del borrado «pendiente de Priya». Las dos cosas no caben juntas: o el test de CA16 excluye esa tabla (verde falso) o se queda en rojo y la carga no puede arrancar. PR-19 repite el hueco con `auditoria_accesos` (M3 la añade al inventario, pero tampoco la borra). El plan no dice cuál de las dos ocurre ni qué conducta rige mientras Priya no responde.",
+      "escenario": "19-dic, Priya no ha respondido la pregunta 2. Para cumplir la precondición, el test de CA16 se escribe saltando `match_auditoria_scores` y `auditoria_accesos`; PR-18 queda verde; se corre la carga (~2.000 candidatos reales) y la medición de T1 (50 accesos de staff → filas con candidato_id de 500 candidatos). El 28-dic llega una petición de borrado de un candidato del histórico: se borran score, razones y trabajos; quedan su hash y su candidato_id en dos tablas. CA16 incumplido con la suite en verde.",
+      "arreglo": "Hacer explícito en PR-18 y PR-16 que el test de CA16 cubre `match_auditoria_scores` y `auditoria_accesos` sin exclusiones, y añadir una sexta precondición de la operación: decisión escrita de Priya sobre la pregunta 2 (fecha pedida en la primera semana de diciembre, junto a las otras tres acciones de §7). Proponerle una conducta por omisión reversible para desbloquear si no responde a tiempo (p. ej. anular hash y referencia al candidato conservando versión de prompt, modelo y fecha), dejando claro que es propuesta y no decisión del plan."
+    },
+    {
+      "id": "B2",
+      "paso": "PR-18 (lista de archivos) y §2 «Dos archivos fuera de app/match/»",
+      "requisito": "CA16: «cuando se ejecuta la petición de borrado; entonces no queda ningún dato suyo»; [04:35] la plataforma ya recibe peticiones de borrado",
+      "problema": "Mismo defecto que I2 de la ronda 1, aplicado solo a la subida de CV y a la edición de vacante: el borrado de Match es una función en `app/match/borrado/borrar_candidato.py` que nadie de la plataforma llama. La petición de borrado la atiende el flujo existente de la plataforma, y ese gancho no tiene dueño en el plan. El test de CA16 invoca la función directamente, así que pasa aunque en producción nunca se ejecute.",
+      "escenario": "Enero: soporte de Criba procesa una petición de borrado por el procedimiento habitual de la plataforma. Se borra el candidato de las tablas de negocio; `match_scores`, `match_trabajos` y la auditoría conservan sus filas con candidato_id y hash. Nadie lo nota hasta la revisión de SOC 2 en marzo, con CA16 en verde en CI.",
+      "arreglo": "Añadir a §2 un tercer archivo fuera de `app/match/`: la ruta o comando de borrado de candidato de la plataforma, con dueño PR-18. El test de CA16 ejecuta el borrado por el camino de la plataforma, no llamando a la función de Match; y la enumeración de PR-04 (ver I3) comprueba que la única escritura de Match desde fuera del módulo sea esa llamada."
+    }
+  ],
+  "importantes": [
+    {
+      "id": "I1",
+      "paso": "PR-04 (contexto de sistema enumerado) y PR-19 (vista de staff)",
+      "requisito": "CA1/D4 (empresa_id del contexto, nunca de la URL ni de un argumento) y CA17/D21 (staff solo soporte, cada acceso auditado)",
+      "problema": "PR-04 fija que el repositorio exige `empresa_id` del contexto de la petición y que las tres operaciones de sistema no leen scores ni razones. PR-19 hace que staff de Criba «carga la vista» de un candidato de Northstar. Un usuario de staff no pertenece a ninguna empresa, así que el plan no dice de dónde sale su `empresa_id`: las dos salidas fáciles son una cuarta operación de sistema con acceso a scores (rompe I1) o tomar la empresa de la URL (rompe §4 de arquitectura).",
+      "escenario": "PR-19: el desarrollador necesita que un staff vea la vacante de Northstar para CA17 y para medir T1. Añade `empresa_id` como parámetro de ruta para el rol staff. El test de CA1 pasa (recorre sesiones de reclutadores de otra empresa, no de staff) y existe un endpoint donde la empresa viene de la URL, el patrón que D4 prohíbe.",
+      "arreglo": "Definir en PR-04 un contexto de **soporte** explícito: staff elige la empresa en un paso propio (p. ej. sesión de soporte atada a una empresa, con registro en `auditoria_accesos` al crearla), y a partir de ahí el repositorio recibe ese `empresa_id` como cualquier reclutador. Añadir a CA1 el caso «staff en contexto de Northstar pide IDs de Meridian → 404»."
+    },
+    {
+      "id": "I2",
+      "paso": "PR-16 (medición de T1) y PR-19 (auditoría en la misma transacción)",
+      "requisito": "CA5 («un reclutador la abre», p95 < 300 ms) y ADR-001 T1 (se mide una vez; dispara PR-C2)",
+      "problema": "T1 se mide con 50 accesos de staff, y PR-19 exige que cada acceso escriba en `auditoria_accesos` «qué candidato» dentro de la misma transacción que sirve la vista. Para una lista de 500 son hasta 500 filas por petición. CA5 mide el camino del reclutador, que no escribe nada. T1 medirá un camino distinto del de CA5, justo lo que I3 de la ronda 1 quiso evitar.",
+      "escenario": "Carga en marcha, Víctor mide T1 como staff. La auditoría se escribe fila a fila vía ORM: 500 inserts añaden 150-400 ms. p95 = 420 ms ≥ 300 → se dispara PR-C2 en la semana del 29-dic por un coste que ningún reclutador paga.",
+      "arreglo": "Decir en PR-16 con qué sesión se mide T1 (recomendación: una cuenta de reclutador de prueba de Northstar acordada con Tomás, o medir ambos caminos y reportar el del reclutador como T1). En PR-19, definir la granularidad de la fila de auditoría para vistas de lista (una fila por vista con la lista de candidatos, o inserción en lote) y medir su coste en el cuerpo del PR."
+    },
+    {
+      "id": "I3",
+      "paso": "PR-04 (test de enumeración) frente a PR-06, PR-23 y B2 (código fuera de app/match/)",
+      "requisito": "CA1: «test que falla si alguna consulta de Match se construye fuera del único repositorio»",
+      "problema": "El test de enumeración recorre solo `app/match/`. Los tres ganchos que el plan sitúa fuera del módulo (subida de CV, edición de vacante y, con B2, borrado) son precisamente los lugares donde alguien puede escribir un `INSERT` directo sobre `match_trabajos` o leer `match_scores` sin pasar por el repositorio, y el control no los ve.",
+      "escenario": "PR-06: en la ruta de subida de CV de la plataforma, el desarrollador hace `session.execute(insert(match_trabajos).values(...))` porque es más corto que resolver el contexto. El test de enumeración queda verde. Más adelante alguien copia el patrón para un listado y nace una consulta de Match sin `empresa_id` fuera del repositorio.",
+      "arreglo": "Ampliar la enumeración de PR-04 a toda la aplicación: cualquier referencia a modelos o tablas `match_*` fuera de `app/match/repositories/` falla el test, y el único símbolo de Match importable desde la plataforma es la fachada de servicios (`encolar`, `borrar_candidato`). Declararlo en PR-04 y usarlo en PR-06, PR-23 y PR-18."
+    },
+    {
+      "id": "I4",
+      "paso": "PR-06 (gancho de subida de CV) y PR-23 CA9(a)",
+      "requisito": "Alcance 1 (score por par candidato-vacante a la que aplicó) y CA9(a) («sube un CV nuevo, entonces su score se recalcula»)",
+      "problema": "PR-06 fija como test que subir un CV «encola **un** trabajo». Si el CV es del candidato y no de la postulación (contexto: el candidato tiene «su CV»), un candidato con varias postulaciones abiertas en Northstar necesita un trabajo por vacante. El test de PR-06 congelaría la conducta equivocada y CA9(a) solo la verificaría para una vacante.",
+      "escenario": "Enfermera con postulaciones a dos vacantes de Northstar (enfermería y administración) sube un CV nuevo. Se recalcula un par; en la otra vacante su score sigue siendo el del CV viejo, con las razones viejas, sin marca alguna. El reclutador de la segunda vacante decide sobre información obsoleta.",
+      "arreglo": "En PR-06 cambiar la aserción a «encola un trabajo por cada postulación abierta del candidato en esa empresa» y, si el modelo de datos de la plataforma ata el CV a la postulación, decirlo en PR-01 al ver el esquema real. CA9(a) en PR-23 con un candidato en dos vacantes."
+    },
+    {
+      "id": "I5",
+      "paso": "PR-06 (gancho de subida) y PR-04 (origen del empresa_id)",
+      "requisito": "D4/CA1 (empresa_id tomado del contexto, no de un argumento) y CA3 (ningún registro para empresas sin Match)",
+      "problema": "El repositorio toma `empresa_id` «del contexto de la petición (cookie) o del registro de la cola». El gancho de subida corre **antes** de que exista el registro de la cola y la petición puede no ser de un reclutador: si el CV lo sube el candidato por un formulario público o un portal propio, no hay sesión de empresa. El plan no dice de dónde sale el `empresa_id` en ese momento, y el atajo natural (pasarlo como argumento) es lo que §4 prohíbe.",
+      "escenario": "PR-06: la ruta de postulación pública no tiene cookie de empresa. El desarrollador añade `encolar(empresa_id=vacante.empresa_id, ...)`, un argumento que el siguiente llamador puede confundir o omitir. En PR-10, la comprobación de D7 antes del INSERT se hace sobre ese argumento; un error de mapeo encola un CV de Meridian bajo Northstar.",
+      "arreglo": "Definir en PR-04 un constructor de contexto «desde la vacante»: el gancho resuelve la vacante por ID, el repositorio deriva `empresa_id` de la propia fila de la vacante (y comprueba que el candidato pertenece a esa misma empresa) y la activación de D7 se evalúa sobre ese contexto. Test en PR-06: candidato y vacante de empresas distintas → error, cero filas."
+    },
+    {
+      "id": "I6",
+      "paso": "PR-17 (arnés de CA14) y PR-13 (etiqueta `calidad` del contador)",
+      "requisito": "CA10/D12 (techo de 1.500 USD para toda la plataforma, alerta al 80 %) y CA16 (inventario de todo lugar donde Match guarda datos derivados)",
+      "problema": "PR-17 no dice en qué entorno ni en qué tablas corre el conjunto dorado. Si corre en staging (lo razonable: son 10 vacantes cerradas que no deben aparecer a los reclutadores), su contador de gasto es el de staging y la etiqueta `calidad` de I5 no suma al techo de producción; si corre en producción, escribe scores de vacantes cerradas visibles para Northstar y datos derivados que el inventario no contempla.",
+      "escenario": "Diciembre: dos pasadas del conjunto dorado en staging, ~10.000 scores. Producción cree estar al 55 % del techo; la factura del proveedor del 31-dic supera los 1.500 USD y la alerta del 80 % nunca se emitió. CA10 pasa en CI.",
+      "arreglo": "PR-17 declara el entorno (recomendación: base de datos aparte con el conjunto anonimizado), y el presupuesto de diciembre de PR-16 suma a mano los dos contadores con una línea en el registro de la operación tras cada pasada; o el contador de producción admite un asiento manual etiquetado `calidad`. Decir en el inventario qué pasa con los datos del conjunto dorado al terminar (se borran junto con el entorno)."
+    },
+    {
+      "id": "I7",
+      "paso": "PR-16 (precondiciones de la operación de carga)",
+      "requisito": "D3 modificado, condición 2 y §1b: Priya verifica por escrito retención cero y no entrenamiento **antes de producción**; CA2",
+      "problema": "PR-09 dice que el cliente real no se habilita en producción sin la verificación escrita de Priya, pero la lista de precondiciones de la carga (que es la primera vez que CVs reales salen de Criba) no la incluye. La lista es lo que se va a usar como checklist el día de la operación.",
+      "escenario": "29-dic, las cinco precondiciones en verde, Priya de vacaciones, el correo de verificación del proveedor pendiente. La carga arranca «porque el interruptor ya estaba» y ~2.000 CVs salen hacia un proveedor cuya retención cero nadie ha confirmado por escrito. Sin recuperación hacia atrás.",
+      "arreglo": "Añadir a PR-16 la precondición «verificación escrita de Priya del proveedor elegido, enlazada en el registro de la operación» y pedirla con fecha en la primera semana de diciembre, junto con la elección del proveedor (N4 acotada)."
+    }
+  ],
+  "menores": [
+    {
+      "id": "M1",
+      "paso": "PR-07 (guion 3) y meta de la etapa 0",
+      "requisito": "CA18 (hiring manager: 200 sin Match en la vista; 403 solo en endpoints de Match)",
+      "problema": "Tras aplicar M1 de la ronda 1 en PR-05, PR-07 y la meta de la etapa 0 siguen diciendo «hiring manager → 403» sobre la vacante.",
+      "escenario": "El E2E se escribe con el 403 y PR-05 con el 200 sin Match: uno de los dos tests queda rojo en H0 y se arregla a mano el que más estorbe.",
+      "arreglo": "Corregir PR-07 y la meta de la etapa 0: hiring manager abre la vacante → 200 sin score ni orden; pide el fragmento de orden por score → 403."
+    },
+    {
+      "id": "M2",
+      "paso": "PR-06",
+      "requisito": "CA3",
+      "problema": "PR-06 afirma que el gancho «comprueba la activación antes del INSERT» y a la vez difiere la activación a PR-10. Entre PR-06 y PR-10 el gancho encola trabajos de cualquier empresa (solo MOCK, sin fuga), pero el texto es contradictorio.",
+      "escenario": "El revisor de PR-06 exige la comprobación; el autor la improvisa sin la función del repositorio que llega en PR-10 y quedan dos reglas distintas, justo lo que PR-10 quiere evitar.",
+      "arreglo": "Decir en PR-06 que el gancho llama a `encolar` y que la comprobación de D7 se inserta en esa función en PR-10, con el test de cero filas."
+    },
+    {
+      "id": "M3",
+      "paso": "PR-11 (test 2) y PR-15",
+      "requisito": "CA6 (proveedor caído → «Pendientes de score») frente a CA13 (sin score con motivo)",
+      "problema": "PR-11 dice que ante JSON inválido, score 120 o cuatro razones el resultado es «sin score con motivo **y** reintento». Son estados distintos: pendiente (se reintenta, aparece en Pendientes) y sin score (permanente, motivo del candidato). No se dice cuál gana tras agotar reintentos, ni que un fallo nuestro no debe mostrarse al reclutador como motivo del candidato.",
+      "escenario": "Tres respuestas corruptas seguidas del proveedor; el candidato queda «sin score: respuesta inválida del modelo» de forma permanente y nadie lo re-encola, aunque CA6 lo quiere en Pendientes.",
+      "arreglo": "Definir la tabla de estados en PR-11: transitorio (timeout, 500, respuesta inválida) → pendiente con reintentos y alerta de CA7; permanente (sin texto, sin descripción) → sin score con motivo."
+    },
+    {
+      "id": "M4",
+      "paso": "PR-23",
+      "requisito": "CA9 y CA8",
+      "problema": "No se dice qué ve el reclutador durante los 10-60 minutos que tarda un «recalcular vacante» de 500: si la fila de score pasa a pendiente al encolar, la vacante muestra 500 pendientes arriba. Tampoco dónde vive el estado «1 recálculo por día por vacante» (¿columna nueva? PR-23 no trae migración).",
+      "escenario": "La admin pulsa recalcular a las 9:00; hasta las 9:40 la lista de enfermería es una sección de pendientes de 500 y una lista vacía.",
+      "arreglo": "El score anterior permanece visible hasta que se escribe el nuevo (el lote solo afecta a `match_trabajos`); el último recálculo por vacante se deriva del máximo `lote` en `match_trabajos` o se declara la columna y su migración."
+    },
+    {
+      "id": "M5",
+      "paso": "PR-21 (CA5 en CI)",
+      "requisito": "CA5 (p95 < 300 ms, test automático)",
+      "problema": "Un test de latencia absoluta en runners compartidos de CI es inestable; el destino habitual es desactivarlo (mismo argumento que M4 de la ronda 1).",
+      "escenario": "Runner lento en CI: p95 = 340 ms dos veces por semana; el test se marca como no bloqueante y deja de proteger F27.",
+      "arreglo": "Declarar en PR-21 dónde corre (runner dedicado o staging nocturno), con el número de consultas como aserción dura en CI y el p95 como aserción con umbral declarado."
+    },
+    {
+      "id": "M6",
+      "paso": "PR-14 / PR-23",
+      "requisito": "CA9(a) (el score refleja el CV nuevo)",
+      "problema": "Dos trabajos del mismo par con hash distinto (CV nuevo durante un lote de recálculo) pueden escribir en orden inverso y dejar el score del CV viejo.",
+      "escenario": "Recálculo de 500 en curso; una candidata sube CV nuevo; su trabajo del lote (CV viejo) termina después y sobrescribe el score nuevo.",
+      "arreglo": "Al escribir, el ejecutor comprueba que el hash del trabajo coincide con el hash actual del CV del candidato; si no, descarta sin escribir (la misma comprobación que F43 pide para el borrado)."
+    }
+  ],
+  "descartados_por_exoticos": [
+    {
+      "idea": "El contador de gasto solo conoce el coste real después de la respuesta: con 20 llamadas en vuelo al 99 % se supera el techo por unos dólares.",
+      "por_que": "A 12 scores/hora y centavos por score el exceso es despreciable frente a 1.500 USD; la alerta del 80 % es la barrera real."
+    },
+    {
+      "idea": "El proveedor cambia de versión de modelo en mitad de la carga de diciembre y la demo mezcla dos versiones (F26).",
+      "por_que": "Es la pregunta abierta 9 de la SPEC, sin decisión; la auditoría de D15 lo hace detectable y no hay nada que el plan pueda fijar sin inventar requisito."
+    },
+    {
+      "idea": "Postgres como cola no escala si se encienden las 39 empresas restantes.",
+      "por_que": "Fuera de la v1 (§24); ADR-001 ya fija T4 como disparador."
+    },
+    {
+      "idea": "Zona horaria del límite «1/día» de D23.",
+      "por_que": "docs/fallas.md lo declara fuera de alcance y la ronda 1 ya lo descartó."
+    },
+    {
+      "idea": "El mismo candidato postula a Northstar y a Meridian y la pseudonimización o el hash permiten correlacionarlo entre empresas.",
+      "por_que": "Los datos son por empresa y nada de Match se consulta sin `empresa_id`; el hash no sale de la tabla de su empresa. No hay camino realista en el alcance."
+    },
+    {
+      "idea": "Dos admins de Northstar pulsan «recalcular vacante» en el mismo segundo y pasan los dos.",
+      "por_que": "Con el límite en una transacción de Postgres es trivial y el daño sería un lote duplicado una vez; no justifica un hallazgo."
+    }
+  ]
+}

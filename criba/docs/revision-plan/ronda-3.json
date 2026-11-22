@@ -1,0 +1,109 @@
+{
+  "ronda": 3,
+  "confianza": 70,
+  "veredicto": "cambios",
+  "bloqueantes": [
+    {
+      "id": "B1",
+      "paso": "PR-16 · operación de carga inicial, apartado «Con qué sesión se mide T1» (ronda 2, I2) y acción 6 de §7",
+      "requisito": "SPEC tabla de usuarios (Staff de Criba: «cada acceso a scores y razones queda en auditoria_accesos»), CA17, D6, D21",
+      "problema": "El arreglo de R2·I2 hace que T1 se mida con «una cuenta de reclutador de prueba de Northstar». Quien ejecuta la operación es staff de Criba (Víctor, de noche, en diciembre). Entrar con una cuenta de reclutador es un acceso de staff a scores y razones de ~500 candidatos reales, 50 veces, que por construcción NO deja fila en auditoria_accesos: es exactamente el acceso que CA17 obliga a auditar, lavado por una cuenta que no es de staff. Que Tomás acuerde la cuenta no convierte el acceso en acceso de reclutador: la persona sigue siendo staff y SOC 2 en marzo lo lee así. El plan lo adopta a propósito para que el número de T1 no incluya el coste de la auditoría; ese objetivo es legítimo, el medio no.",
+      "escenario": "29-dic, carga en curso. Víctor abre la vacante de enfermería 50 veces con la cuenta de prueba para medir T1. Resultado: 50 lecturas de scores y razones de candidatos reales de Northstar sin una sola fila en auditoria_accesos. PR-19 está «en verde» y el control que D21 declara obligatorio tiene un hueco documentado en el propio registro de la operación.",
+      "arreglo": "Una de dos, y escrita en PR-16: (a) los 50 accesos los dispara una persona de Northstar (Dana o una reclutadora) con su cuenta real, y Víctor solo lee el número del lado del servidor; o (b) se mide con el contexto de soporte (auditado), y PR-19 —que ya mide el coste de su inserción— instrumenta por separado tiempo de consulta+render y tiempo de auditoría; el número que se compara contra los 300 ms es el primero. Eliminar la «cuenta de reclutador de prueba» de la acción 6 de §7 o condicionarla a que la opere Northstar."
+    }
+  ],
+  "importantes": [
+    {
+      "id": "I1",
+      "paso": "PR-04 · test de enumeración, regla (b) «ningún import de Match desde fuera del módulo que no sea fachada.py, sin lista blanca» (ronda 2, I3); PR-01",
+      "requisito": "CA1 segunda mitad (el test que falla si una consulta nace fuera del repositorio) — el control se vuelve inaplicable y se degrada a lista blanca",
+      "problema": "La regla (b) tal cual es insatisfacible desde PR-01: la factoría de la app (fuera de app/match/) importa app.match.routers para montar el router («el router de Match está montado», PR-01); el env.py de Alembic importa los modelos/metadata de Match para las migraciones *_match_*; y todo tests/ importa internos de Match. Ninguno de los tres es fachada.py. El test de PR-04 nace rojo y la salida que el plan prohíbe —una lista blanca que crece— es la única que deja verde.",
+      "escenario": "PR-04: se escribe la regla (b), se corre, falla en app/main.py (mount del router) y en migrations/env.py. Con H0 el 5-dic encima, se añade un `EXCEPCIONES = [...]` «provisional». En PR-06 se añade la ruta de subida; en PR-18 la de borrado; la lista ya tiene cinco entradas y nadie revisa si la sexta es un `insert(match_trabajos)`.",
+      "arreglo": "Declarar en PR-04 la superficie de import permitida de forma cerrada y por naturaleza, no por lista: (1) fachada.py exporta encolar, borrar_candidato y el objeto router para montarlo (o un `montar(app)`), y es el único import permitido desde app/ fuera de app/match/; (2) migrations/ y tests/ quedan fuera de la regla (b) por ruta, dicho en el test; (3) el test sigue sin lista blanca de módulos llamadores. Los modelos SQLAlchemy de Match deben vivir bajo app/match/repositories/ (el plan no dice dónde) para que la regla (a) los cubra."
+    },
+    {
+      "id": "I2",
+      "paso": "PR-05 · «Vista de vacante» en app/match/routers/vacante.py; §2 «Tres archivos fuera de app/match/»; PR-01",
+      "requisito": "CA8 (orden por score por defecto «cuando un reclutador la abre»), alcance 5, CA18 (hiring manager «abre la vacante» → 200 sin Match)",
+      "problema": "La plataforma ya tiene una vista de vacante con sus candidatos (hoy los reclutadores «revisan 500 CVs uno por uno», [00:16]). El plan construye la vista dentro de Match y no dice si esa ruta sustituye a la existente o convive con ella. Si convive, el «orden por score por defecto» solo es defecto en una página a la que nadie llega desde la navegación actual. Si la vista existente se modifica para mostrar scores, es un cuarto gancho que importa services/listado desde fuera de la fachada: la enumeración de PR-04 lo pone en rojo y el plan no tiene dueño para ese cambio.",
+      "escenario": "Demo 15-ene: Dana abre la vacante de enfermería por el menú de siempre y ve la lista de la plataforma, por fecha, sin score. Alternativa igual de realista: en PR-05 el desarrollador toca la plantilla de la plataforma, importa listado.py, la enumeración falla y se resuelve con una excepción «solo esta».",
+      "arreglo": "PR-01 anota un cuarto hecho del esquema real: dónde vive hoy la vista de vacante/candidatos y su ruta. PR-05 fija una de dos: (a) el router de Match toma esa misma ruta (la vista de la plataforma se retira o redirige), y entonces el 200-sin-Match del hiring manager y la vista de Meridian las sirve ese mismo router; o (b) la vista de la plataforma delega el listado en una función de la fachada (`listar_vacante`), que pasa a ser el cuarto símbolo exportado y la enumeración lo nombra. Tabla de §8: CA8 y CA18 citan la opción elegida."
+    },
+    {
+      "id": "I3",
+      "paso": "PR-22 (test de CA11 y supuesto «idioma por omisión de la empresa»), PR-20 (selección de fila), PR-02 (clave con idioma)",
+      "requisito": "CA11, D11 («explicación en su idioma, usuarios.idioma»)",
+      "problema": "Con una fila por par en el idioma por omisión de la empresa, CA11 solo se cumple cuando usuarios.idioma coincide con ese defecto. El test de PR-22 no dice que el reclutador de la fixture tenga un idioma distinto del defecto de su empresa, así que queda verde sin ejercer el caso que CA11 describe. Y PR-20 no dice cómo elige la fila el listado cuando el idioma del usuario no es el de la fila: si filtra por idioma, el reclutador ve toda la vacante en «Pendientes de score»; si ignora el idioma, ve razones en el idioma equivocado. El plan ya lo lleva a la pregunta 15, pero §8 marca CA11 como cubierto por PR-22, y no lo está.",
+      "escenario": "Northstar con defecto 'en'. Una reclutadora con usuarios.idioma='es' abre enfermería. Caso filtro: 500 candidatos en Pendientes y ninguno con score, con CA8 y CA11 verdes en CI. Caso sin filtro: tres razones en inglés para una usuaria que la SPEC dice que las lee en español.",
+      "arreglo": "(1) PR-22: la fixture pone el idioma del reclutador distinto del defecto de la empresa, para que el test no sea vacío; (2) PR-20 fija la regla de selección: fila del idioma del usuario y, si no existe, la del idioma por omisión de la empresa; nunca Pendientes por falta de idioma; (3) proponer a Tomás (pregunta 15) la salida barata que el esquema ya permite: al encolar, un trabajo por cada idioma distinto entre los usuarios con acceso a Match en esa vacante (coste ≤2×); (4) mientras no decida, §8 dice que CA11 está cubierta solo cuando usuarios.idioma = defecto de empresa, no «cubierta». Y PR-01 anota dónde se guarda el «idioma por omisión de la empresa», que hoy no existe en ningún documento (si hay que crearlo, en configuración de Match, no en una migración sobre `empresas` — F16)."
+    },
+    {
+      "id": "I4",
+      "paso": "PR-18 · criterio de terminado («esas dos aserciones presentes y en rojo, no saltadas ni comentadas»; «el PR se mezcla así»), contra regla 1.2, PR-01 («CI verde») y §6 (evidencia «Suite completa»)",
+      "requisito": "No viola un CA: es retrabajo y pérdida del control de CI. CA16 queda protegida solo si el rojo se distingue del ruido",
+      "problema": "PR-18 se mezcla con dos aserciones rojas en main hasta que Priya responda. Desde ese momento la suite completa está roja para PR-19, PR-20, PR-21, PR-22, PR-16 y PR-17: o CI bloquea todas las mezclas, o se enseña a todo el mundo a mezclar con CI rojo, que es la forma más común de perder un control (el propio plan lo dice en PR-07 y en M4/M5). La regla 1.7 prohíbe «marcadores de salto» para considerar la precondición de la carga «en verde», pero el plan la ha extendido al estado de main, y ahí la prohibición rompe más de lo que protege.",
+      "escenario": "12-dic se mezcla PR-18. 13 al 19-dic: cinco PRs cuyo apartado «Suite completa» muestra `2 failed`. El revisor deja de mirar ese bloque. Un tercer fallo real (una tabla nueva fuera del inventario, F13) aparece como `3 failed` y pasa.",
+      "arreglo": "Separar los dos estados: en main, las dos aserciones van con `xfail(strict=True, reason='pregunta 2 §9, Priya')` —no es un salto: el test se ejecuta y falla si pasa inesperadamente—; la precondición 1 de la operación de carga exige literalmente «cero marcadores xfail/skip en tests/match/test_borrado_candidato.py», y es eso lo que la regla 1.7 prohíbe saltarse. Corregir el texto de la regla 1.7 y el criterio de terminado de PR-18 para que digan esto."
+    },
+    {
+      "id": "I5",
+      "paso": "PR-16 · comando de carga inicial y precondiciones de la operación",
+      "requisito": "SPEC Privacidad: «Hasta entonces [10-dic], y para la demo, solo vacantes de Texas (§10)»; no-objetivo «vacantes fuera de Texas en la demo»; D20",
+      "problema": "El comando de carga puntúa «el histórico abierto (~2.000)» sin ningún filtro por vacante o ubicación, y Northstar opera en Nueva York (D20). La SPEC solo acota a Texas «la demo»; no dice si el histórico abierto es solo Texas (pregunta abierta 4 de la SPEC: «el día después»). La operación cae después del 10-dic, así que la respuesta del abogado existe cuando se ejecuta, pero no es precondición y el comando no puede acotarse aunque la respuesta sea «aplica».",
+      "escenario": "10-dic: el abogado responde que la ley 144 aplica. 29-dic: el comando puntúa 2.000 postulaciones del histórico, incluidas las de vacantes de Nueva York, sin aviso al candidato ni auditoría de sesgo. Es la primera salida de CVs reales y no hay recuperación hacia atrás.",
+      "arreglo": "El comando acepta una lista explícita de vacantes (o un filtro por estado de la vacante) y se niega a correr sin ella; el registro de la operación anota el filtro usado. Precondición 8 de la operación: respuesta del abogado del 10-dic enlazada y alcance geográfico del histórico confirmado por escrito por Tomás. Pregunta abierta nueva en §9: «¿el histórico abierto de CA20 incluye vacantes fuera de Texas?», decide Tomás con el abogado."
+    }
+  ],
+  "menores": [
+    {
+      "id": "M1",
+      "paso": "Regla 1.5 («ningún PR introduce el cliente real antes de que existan PR-08 y PR-10») contra el orden de ejecución PR-08 → PR-09 → PR-10 y la dependencia «PR-10: PR-08, PR-09»",
+      "requisito": "Coherencia interna de una regla declarada «no negociable»; CA3 no se viola porque el interruptor está apagado y solo hay fixtures sintéticas",
+      "problema": "PR-09 introduce el cliente real un paso antes de que exista la comprobación de activación de PR-10, que es justo lo que la regla 1.5 prohíbe. PR-10 no necesita nada de PR-09: sus tres tests usan el doble.",
+      "escenario": "Revisor de PR-09 aplica la regla 1.5 al pie de la letra y bloquea el PR; o la ignora y la regla deja de ser «no negociable» desde el segundo PR de la etapa 1.",
+      "arreglo": "Orden PR-08 → PR-10 → PR-09; dependencias de PR-10 = PR-08 (y PR-06); PR-11 y PR-13 siguen dependiendo de PR-09."
+    },
+    {
+      "id": "M2",
+      "paso": "PR-02 (esquema) y PR-18 (gancho de borrado)",
+      "requisito": "CA16 (borrado completo) y pregunta 2 de §9 (Priya decide qué pasa con la auditoría)",
+      "problema": "No se dice si las tablas match_* llevan FK a `candidatos` ni con qué política. Con `ON DELETE CASCADE` el borrado de la plataforma arrastra match_scores, match_trabajos y match_auditoria_scores antes de que el gancho corra: CA16 queda verde «solo», la purga de trabajos en vuelo (F43) no se ejecuta y la decisión de Priya sobre la fila de auditoría queda tomada por el esquema. Sin FK, o con RESTRICT, el borrado de la plataforma falla si el gancho corre después.",
+      "escenario": "PR-02 crea FKs con CASCADE «por limpieza». Enero: una petición de borrado elimina la fila de auditoría del score que Priya acaba de decidir conservar anonimizada.",
+      "arreglo": "PR-02 declara: sin `ON DELETE CASCADE` en ninguna tabla match_*; PR-18 fija que el gancho corre antes de que la plataforma borre la fila del candidato, y lo asercia."
+    },
+    {
+      "id": "M3",
+      "paso": "PR-06 · «un trabajo por cada postulación abierta del candidato en esa empresa» con la fachada `encolar` y el contexto «desde la vacante»",
+      "requisito": "Alcance 1 (par candidato–vacante a la que aplicó), CA9(a)",
+      "problema": "`encolar` recibe (vacante, candidato) y deriva la empresa de la vacante; pero una subida de CV de un candidato con N postulaciones tiene que enumerar esas N postulaciones, que son tablas de la plataforma. El plan no dice quién enumera: si lo hace Match, el repositorio consulta tablas de la plataforma sin contexto de empresa previo; si lo hace el gancho, es código de la plataforma con reglas propias, que I3 de la ronda 2 quería evitar.",
+      "escenario": "PR-06: el desarrollador pone la enumeración de postulaciones dentro de `encolar` con una consulta sobre `postulaciones` sin empresa_id, y nada la detecta porque no es tabla match_*.",
+      "arreglo": "Decirlo en PR-06: el gancho (plataforma) enumera las postulaciones abiertas del candidato con sus propias consultas y llama a `encolar(vacante_id, candidato_id)` una vez por cada una; `encolar` no consulta tablas de la plataforma salvo la fila de la vacante y la pertenencia del candidato, que PR-04 ya define."
+    }
+  ],
+  "descartados_por_exoticos": [
+    {
+      "idea": "Carrera entre la comprobación de hash/existencia del candidato y la escritura del score (PR-14, F43) si el borrado cae en el mismo milisegundo",
+      "por_que": "A ~12 scores/hora y unas pocas peticiones de borrado al mes la ventana es despreciable; un `SELECT … FOR UPDATE` sobre la fila del candidato en la misma transacción lo cierra y el implementador lo pondrá sin que el plan lo diga."
+    },
+    {
+      "idea": "Tormenta de alertas de CA7 cuando se alcanza el techo de D12 y todos los pendientes superan 60 min",
+      "por_que": "Es conducta pedida por la SPEC (CA7 y CA10 juntas); molesta pero no viola nada y el destinatario de la alerta sigue sin definir (pregunta 8)."
+    },
+    {
+      "idea": "Hash del CV calculado sobre el texto pseudonimizado en vez del original (afecta a la comprobación de hash de M6)",
+      "por_que": "docs/fallas.md lo declara fuera de alcance; basta fijar en PR-12 cuál se usa y usarlo en los dos sitios."
+    },
+    {
+      "idea": "Cierre de mes del contador de gasto y zona horaria del límite 1/día",
+      "por_que": "Declarado fuera de alcance en docs/fallas.md y ya descartado en la ronda 1."
+    },
+    {
+      "idea": "DOM de 500 filas en un celular a 360 px por encima de los 2 s",
+      "por_que": "La SPEC lo declara objetivo con medición manual, no test; PR-25 ya prevé el ensayo en el teléfono real."
+    },
+    {
+      "idea": "Fuga real de PII por tener el cliente real mezclado (PR-09) antes de la activación por empresa (PR-10)",
+      "por_que": "Entre PR-09 y PR-10 solo hay fixtures sintéticas y el interruptor de producción está apagado por configuración; queda como incoherencia de reglas (M1), no como riesgo de datos."
+    }
+  ]
+}

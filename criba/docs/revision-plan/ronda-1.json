@@ -1,0 +1,157 @@
+{
+  "ronda": 1,
+  "confianza": 55,
+  "veredicto": "cambios",
+  "bloqueantes": [
+    {
+      "id": "B1",
+      "paso": "PR-16 (carga inicial real) antes de PR-18 (borrado) y PR-19 (auditoría de staff); hitos H1 19-dic y H2 9-ene",
+      "requisito": "SPEC alcance 11 y CA16 (borrado de todo lo derivado en ≤7 días, D15); CA17 y D21 (cada acceso de staff a scores queda en auditoria_accesos)",
+      "problema": "El plan exige que PR-16 ejecute la carga inicial 'de verdad' contra el histórico de Northstar (~2.000-2.700 candidatos reales) en diciembre, pero el código de borrado llega en PR-18 y la auditoría de acceso de staff en PR-19, ambos en la etapa H2 (9-ene). Entre la carga y H2 hay 3-4 semanas con datos derivados de candidatos reales sin vía de borrado y con el propio Víctor (staff) abriendo la vista de la vacante de 500 para medir T1 (50 peticiones) sin que quede una sola fila en auditoria_accesos. Las dependencias declaradas permiten el reorden: PR-18 solo necesita PR-12 y PR-14; PR-19 solo PR-05 y PR-12.",
+      "escenario": "12-dic: se corre la carga inicial. 15-dic: un candidato de Northstar pide el borrado (la plataforma ya recibe estas peticiones, [04:35]). Match tiene su score, razones, hash y fila de auditoría; no existe borrar_candidato.py hasta el 9-ene. El plazo de 7 días vence el 22-dic incumplido. En paralelo, la medición de T1 genera 50 accesos de staff a scores reales sin auditoría, en producción, con datos del cliente que SOC 2 revisa en marzo.",
+      "arreglo": "Mover PR-18 y PR-19 por delante de PR-16 (ningún otro paso cambia de dependencias). Añadir al criterio de terminado de PR-16: 'borrado y auditoría de staff en verde en la suite completa antes de ejecutar la carga'. Si por calendario hay que retrasar la carga una semana, es preferible a producir datos reales sin salida."
+    },
+    {
+      "id": "B2",
+      "paso": "PR-14 (clave de idempotencia) y PR-23 (recalcular vacante)",
+      "requisito": "SPEC alcance 7, CA9 y D23 ('un admin puede pulsar recalcular vacante' tras editar la descripción); CA9(b) exige que la edición NO recalcule sola, así que el botón es la única vía de refresco",
+      "problema": "La idempotencia de PR-14 se define por (candidato, vacante, hash de CV, versión de prompt). La descripción de la vacante no entra en la clave. Tras editar la descripción, ni el CV ni el prompt cambian, así que 'recalcular vacante' encola ~500 trabajos que la idempotencia descarta como ya hechos: cero llamadas, scores intactos. El test CA9(c) del plan solo verifica 403 al reclutador y el bloqueo del segundo intento del día; no asercia que el primer intento recalcule de verdad. La suite queda verde con un botón que no hace nada.",
+      "escenario": "Admin de Northstar edita la descripción de la vacante de enfermería (añade 'requiere licencia en Texas'), pulsa 'recalcular vacante'. PR-16 ya puntuó a los 500 con el prompt v1 y el mismo hash de CV. El ejecutor dedup contra match_trabajos/match_scores: 0 llamadas al proveedor, orden idéntico al de antes de la edición. El admin cree que recalculó; al día siguiente el límite 1/día le impide reintentar.",
+      "arreglo": "Incluir en la clave de idempotencia un hash o versión de la descripción de la vacante (o, alternativa mínima, un campo 'lote de recálculo' que el botón manual fija y que invalida la dedup sin perder la protección contra entregas duplicadas dentro del mismo lote, F35). Añadir a CA9(c) en PR-23 la aserción 'tras editar la descripción y pulsar el botón, llamadas al doble == nº de candidatos con texto' y, en PR-14, un caso de idempotencia con descripción distinta → segunda llamada."
+    },
+    {
+      "id": "B3",
+      "paso": "PR-08 (frontera de pseudonimización): el test 3 queda xfail; PR-09 y PR-16 se mezclan y se ejecutan con ese xfail vigente",
+      "requisito": "CA2 y D3 modificado §1a: 'el cuerpo enviado no contiene ninguno de esos seis datos' (nombre, correo, teléfono, dirección, links, fotos)",
+      "problema": "El plan manda a xfail, pendiente de Priya, toda la fixture 'con el nombre, la ciudad y la universidad dentro de la narrativa'. Pero la pregunta abierta 2 de SPEC solo es abierta para entidades desconocidas (empleador, universidad, ciudad). El nombre, el correo y el teléfono son de los seis datos de §1a y CA2 los prohíbe en el payload sin distinguir si vienen de un campo estructurado o del texto. Prácticamente todo CV repite el nombre en la primera línea del texto. Con el xfail, PR-09 habilita el cliente real y PR-16 envía ~2.000 CVs reales con el nombre dentro del cuerpo: PII fuera de Criba, el escenario de F2 (S4×P4) ejecutado a propósito y sin recuperación posible hacia atrás.",
+      "escenario": "Carga inicial en diciembre. CV de texto: 'MARÍA PÉREZ GARCÍA — Enfermera registrada — maria.perez@gmail.com — (512) 555-0134 ... '. El pseudonimizador vacía los campos nombre/correo/teléfono del registro del candidato, pero el texto del CV sale con las tres cadenas intactas. CA2 pasa porque las fixtures de los tests 1 y 2 solo traen PII en campos estructurados y el test 3 está marcado xfail.",
+      "arreglo": "Partir el test 3 en dos: (a) 'valores conocidos' — toda cadena que esté en los campos estructurados del candidato (nombre completo y sus partes, correos, teléfonos, links) se elimina también del texto libre, y los patrones genéricos (correo, teléfono, URL de perfil) se eliminan por regex; esto es CA2 tal cual y debe estar en verde en PR-08, antes de PR-09; (b) 'entidades desconocidas' (empleador anterior, universidad, ciudad no declarada) — este sí queda xfail pendiente de Priya. Añadir a la regla 5 de §1 del plan: ningún cliente real con un test de CA2 en xfail sobre uno de los seis datos de §1a."
+    }
+  ],
+  "importantes": [
+    {
+      "id": "I1",
+      "paso": "PR-04 (repositorio exige empresa_id, test de enumeración limitado a match_repo.py) contra el mapa de archivos de §2 y PR-06/PR-13/PR-14/PR-15/PR-16/PR-18",
+      "requisito": "CA1 segunda mitad (test que falla si una consulta de Match nace fuera del único repositorio) y D4",
+      "problema": "Hay consultas de Match que son por naturaleza sin empresa: tomar el siguiente trabajo con FOR UPDATE SKIP LOCKED (todavía no se sabe de qué empresa es), la alerta de pendientes >60 min (toda la plataforma), el contador de gasto (D12 es un techo de toda la plataforma) y la reconciliación de leases. El plan dice que el repositorio 'no se puede construir sin contexto de empresa (error, no valor por omisión)' y a la vez sitúa la construcción de SQL en cola/trabajos.py, services/gasto.py, comandos/cobertura.py y borrado/borrar_candidato.py, fuera de match_repo.py. Una de las dos cosas se rompe en PR-06, que es el primer paso después de PR-04.",
+      "escenario": "PR-06 escribe tomar() en cola/trabajos.py con un SELECT ... SKIP LOCKED. El test de enumeración de PR-04 se pone rojo. Bajo presión, el desarrollador añade trabajos.py a una lista blanca del test (el 'único punto' pasa a ser dos y luego cinco) o relaja el repositorio para aceptar contexto vacío (y el control de CA1 deja de distinguir un olvido de un caso legítimo).",
+      "arreglo": "Definir en PR-04 un 'contexto de sistema' explícito y enumerado para exactamente tres operaciones (tomar trabajo, reconciliación/alerta de antigüedad, contador de gasto), con la regla de que cualquier lectura de candidatos, scores o razones sigue exigiendo empresa_id, tomado de la fila del trabajo una vez tomada. Corregir el mapa de archivos: trabajos.py, gasto.py, cobertura.py y borrar_candidato.py no construyen SQL; llaman a métodos del repositorio. El test de enumeración acepta solo el paquete repositories/."
+    },
+    {
+      "id": "I2",
+      "paso": "PR-06 ('llega un CV → se encola'), PR-10 (comprobación de D7 'en el punto único de acceso a datos') y PR-23 ('editar la vacante no recalcula')",
+      "requisito": "CA3 ('no se emite ninguna llamada y no se crea ningún registro de Match'); SPEC alcance 7 (recálculo automático al subir CV nuevo)",
+      "problema": "Ningún PR toca el punto de la plataforma actual donde se sube un CV ni donde se edita una vacante; el plan solo lista archivos bajo app/match/. El gancho de entrada no tiene dueño, y es lo que hace que un CV nuevo se puntúe solo. Además, PR-10 ubica la comprobación de D7 en el repositorio, que el ejecutor consulta al tomar el trabajo; si el gancho encola antes de comprobar, ya existe una fila en match_trabajos de una empresa sin anexo, y CA3 prohíbe crear 'ningún registro'.",
+      "escenario": "Un reclutador de Meridian sube un CV. El gancho de PR-06 inserta un trabajo en match_trabajos con empresa_id = Meridian. El ejecutor lo toma, el repositorio aplica D7 y no llama al proveedor. CA3 'cero llamadas' pasa; 'ningún registro' falla, y la fila con candidato_id de Meridian queda en una tabla de Match hasta que alguien la limpia.",
+      "arreglo": "Nombrar el gancho en el plan: PR-06 añade la integración con la ruta de subida de CV de la plataforma actual (y PR-23 con la edición de vacante, para probar que NO encola); ambos con la comprobación de activación por empresa antes del INSERT en la cola. Mantener la segunda comprobación en el repositorio al tomar el trabajo (F5, camino sin cookie). El test 2 de PR-10 asercia 'cero filas en match_trabajos' además de 'cero llamadas'."
+    },
+    {
+      "id": "I3",
+      "paso": "PR-16 (medición de T1) antes de PR-20 (orden por score) y PR-21 (índice y consulta única)",
+      "requisito": "CA5 (p95 < 300 ms sobre la vacante de 500) y ADR-001 T1 ('p95 de servidor al abrir la vacante de 500, con la cola trabajando', hito que cierra la ADR)",
+      "problema": "T1 se mide en PR-16 sobre una vista que aún no es la de CA5: sin índice (empresa_id, vacante_id, score), sin el guardia de una sola consulta (F27) y sin orden por score ni sección de pendientes. Si la plantilla de PR-05/PR-06 hace una consulta por candidato, 500 filas dan un p95 de segundos por N+1, no por contención, y se dispara PR-C2 (extraer el ejecutor) por un dato falso. Si la plantilla es más simple que la final, T1 da verde y tranquiliza sin medir nada. La ADR dice que T1 'se mide una vez, en diciembre': esa única medición sería inválida.",
+      "escenario": "Carga inicial el 12-dic. Vista de PR-06 con un acceso perezoso por fila → 501 consultas → p95 = 1,8 s. El plan manda ejecutar PR-C2 en diciembre (horas que no hay). En enero, PR-21 añade el índice y la consulta única y el p95 cae a 80 ms: la extracción fue innecesaria.",
+      "arreglo": "Crear el índice (empresa_id, vacante_id, score) en la migración 0001 de PR-02: match_scores es tabla nueva, así que no aplica F16 ni CONCURRENTLY. Mover el guardia de 'una sola consulta' a PR-05. Reordenar PR-20 y PR-21 antes de PR-16 (ambos dependen solo de PR-11), de modo que T1 mida la vista real. Si el calendario no lo permite, declarar en la ADR que T1 se vuelve a medir tras PR-21 y no se dispara PR-C2 con la primera medición."
+    },
+    {
+      "id": "I4",
+      "paso": "PR-22 (idioma viaja en el trabajo) después de PR-16 (carga inicial); esquema de match_scores en PR-02",
+      "requisito": "CA11 y D11 (razones en el idioma de usuarios.idioma de quien mira) y CA20 (cobertura de la demo con los scores de la carga)",
+      "problema": "Las razones se persisten una vez por par (candidato, vacante), pero el idioma es por usuario. El plan no dice de qué reclutador se toma el idioma cuando el trabajo lo encola la llegada de un CV (una vacante tiene varios reclutadores) ni cuando lo encola la carga inicial (no hay reclutador). Además, PR-22 cambia el prompt (añade la instrucción de idioma), es decir, la versión de prompt; los ~2.000-2.700 scores de la demo quedan con una versión anterior y la idempotencia por versión de prompt los deja intactos. Para la demo probablemente no se nota (Northstar trabaja en inglés, [02:37]); el retrabajo llega cuando conviven dos idiomas en una vacante, y es una migración del esquema.",
+      "escenario": "Vacante de enfermería en Texas con un reclutador con idioma 'en' y una admin con idioma 'es'. El trabajo se encoló con 'en'. La admin abre la vacante: tres razones en inglés. CA11 pasa en el test (un usuario por caso) y falla en producción. Mientras tanto, los scores de la carga inicial llevan prompt v1 (sin idioma) y los de enero prompt v2: dos versiones en la misma lista (F26) sin que nadie haya cambiado de modelo.",
+      "arreglo": "Mover PR-22 antes de PR-16 y fijar en el plan de dónde sale el idioma de un trabajo sin reclutador (propuesta a confirmar: idioma del admin de la empresa o idioma por defecto de la empresa). Incluir idioma en la clave de match_scores desde PR-02 (razones por par e idioma), aunque la v1 solo genere uno; así no hay migración después. Añadir a las preguntas abiertas del plan: ¿qué pasa cuando dos usuarios con idiomas distintos miran la misma vacante? Decide Tomás."
+    },
+    {
+      "id": "I5",
+      "paso": "PR-13 (techo), PR-16 (carga inicial) y PR-17 (conjunto dorado), todos en diciembre",
+      "requisito": "CA10 y D12 (techo de 1.500 USD/mes para toda la plataforma; al tope los nuevos quedan pendientes) y CA20 (cobertura 100 % para la demo)",
+      "problema": "En diciembre coinciden la carga inicial (~2.000-2.700 scores), la ejecución de CA14 sobre 10 vacantes cerradas (si son del tamaño de la de enfermería, hasta ~5.000 scores) y las iteraciones de prompt que fallas.md F1 recomienda, cada una re-puntuando el conjunto dorado. El plan no dice si CA14 descuenta del contador de gasto de PR-13. Si descuenta, puede consumir el techo y dejar la carga inicial en 'pendientes' (CA10); si no descuenta, es gasto real fuera del techo que el CFO fijó para 'toda la plataforma'. El precio por score es un supuesto sin fuente (fallas.md supuesto 3).",
+      "escenario": "10-dic: primera pasada de CA14, 4.500 scores. 14-dic: segunda iteración del prompt, otros 4.500. 16-dic: arranca la carga inicial; el contador está al 95 %, salta al 100 % a mitad de la vacante de enfermería y 300 candidatos de la demo quedan pendientes hasta el 1-ene. CA20 no se puede medir en diciembre y el hito H1 se pierde.",
+      "arreglo": "Decidir y escribir en PR-13 si las ejecuciones de CA14 pasan por el contador (recomendación: sí, con una etiqueta 'calidad' para separarlas en el informe). En PR-16, medir el precio real por score sobre los primeros 50 trabajos y publicar en el cuerpo del PR una tabla de presupuesto de diciembre (carga + N iteraciones de CA14) contra los 1.500 USD antes de lanzar el resto. Ordenar: carga inicial primero, conjunto dorado después, salvo que la tabla diga que caben las dos."
+    },
+    {
+      "id": "I6",
+      "paso": "PR-24 (CA12, paridad de idioma) en tests/match/ como test de CI",
+      "requisito": "CA12 (diferencia ≤5 puntos entre el mismo CV en es y en en); regla 1.6 del plan (ningún PR trae datos reales; CI con MOCK)",
+      "problema": "CA12 solo tiene sentido contra el proveedor real: el MOCK devuelve un score fijo y la diferencia es 0 por construcción, un verde vacío. El plan no marca PR-24 como manual (solo lo hace para CA14) y lo deja en tests/match/, que corre en CI con el MOCK. Si se intenta correr en CI contra el proveedor real, la clave del proveedor entra en CI (F19) y cada PR gasta techo.",
+      "escenario": "PR-24 se mezcla con 10 pares sintéticos y el MOCK. La suite dice 'paridad OK'. En la demo, un CV en español de la vacante de enfermería queda 15 puntos por debajo de su traducción. El sesgo de F28 nunca se midió, pero el PR tiene evidencia verde.",
+      "arreglo": "Declarar PR-24 como ejecución manual, fuera de CI, con informe reproducible igual que CA14 (y, si SPEC lo permite, mover el arnés a tests/calidad/). El test en CI solo verifica que el arnés corre y que falla con un doble que devuelve diferencias >5. Lo mismo aplica a la parte 'idioma del texto renderizado' de CA11: contra el MOCK, el doble debe respetar el idioma pedido o la aserción es vacía."
+    }
+  ],
+  "menores": [
+    {
+      "id": "M1",
+      "paso": "PR-05 (hiring manager → 403)",
+      "requisito": "CA18: el hiring manager 'abre la vacante' y 'los endpoints de Match le devuelven 403'",
+      "problema": "arquitectura.md §3 paso 2 dice que el hiring manager recibe 403 en la propia vista de vacante; SPEC CA18 presupone que la abre (200) sin Match. Si routers/vacante.py de Match sustituye la vista de vacante de la plataforma, el 403 le quita al hiring manager la lectura que hoy tiene.",
+      "escenario": "Hiring manager de Northstar con lectura de la vacante de TI abre la URL tras el despliegue de PR-05 y recibe 403 donde ayer veía la lista.",
+      "arreglo": "Fijar en PR-05: la vista de vacante responde 200 sin score, razones, orden ni pendientes para el hiring manager; solo los endpoints y fragmentos específicos de Match (orden por score, recalcular) devuelven 403. Corregir la frase de arquitectura.md en una propuesta aparte, no editándola."
+    },
+    {
+      "id": "M2",
+      "paso": "PR-14 y PR-15 (bucle, reconciliación y alerta dentro del proceso web)",
+      "requisito": "CA7 (una alerta por pendientes >60 min) y ADR-001 (tope de concurrencia)",
+      "problema": "Con N workers web (gunicorn/uvicorn con 2 o más procesos, lo habitual) hay N bucles, N reconciliaciones y N emisores de la misma alerta; el tope de concurrencia es por proceso, así que el tope efectivo es N veces el configurado.",
+      "escenario": "4 workers, tope 5 → 20 llamadas concurrentes al proveedor durante la carga; 4 alertas idénticas a las 02:00 de un sábado.",
+      "arreglo": "Un advisory lock de Postgres para que solo un proceso corra reconciliación y alerta; documentar que el tope es por proceso y fijarlo en función del número de workers. Cabe en PR-14 sin añadir componentes."
+    },
+    {
+      "id": "M3",
+      "paso": "PR-02 (inventario por migración) y PR-19 (escritura en auditoria_accesos)",
+      "requisito": "CA16: 'ningún identificador que apunte a él en ninguna tabla o cola de Match'",
+      "problema": "auditoria_accesos es una tabla de la plataforma, no la crea una migración de Match, así que el test de inventario de PR-02 no la ve; pero PR-19 escribe en ella 'qué candidato'. Es la misma tensión que F29 y no está en la pregunta a Priya.",
+      "escenario": "Borrado del candidato en verde; auditoria_accesos conserva filas con su candidato_id porque nadie la declaró dato derivado.",
+      "arreglo": "Añadir auditoria_accesos al inventario a mano en PR-19 y ampliar la pregunta abierta 2 del plan (Priya) para que cubra también esta tabla."
+    },
+    {
+      "id": "M4",
+      "paso": "PR-15 (CA7: 200 CVs contra proveedor simulado con latencia de staging)",
+      "requisito": "CA7; criterio del plan de suite rápida (PR-07, E2E <1 min)",
+      "problema": "Si la latencia simulada es real (segundos por llamada) y el tope de concurrencia es pequeño, el test tarda minutos en CI y acaba desactivado.",
+      "escenario": "Latencia medida 8 s, tope 5, 200 CVs → 320 s por ejecución de la suite.",
+      "arreglo": "Reloj simulado o latencia escalada con factor declarado en el test; mantener una ejecución con latencia real como medición manual en el cuerpo del PR."
+    },
+    {
+      "id": "M5",
+      "paso": "§7 Calendario y capacidad",
+      "requisito": "R1 (calendario) y los hitos del plan",
+      "problema": "El plan reconoce ~104 h contra ~100 h, y la lista de sacrificio (PR-26, PR-24, condicionales) libera ~8 h. Los arreglos de esta ronda son reordenes, no horas nuevas, pero PR-14 y PR-07 (Playwright estable en CI) están estimados a 4 h con poca base.",
+      "escenario": "PR-07 tarda 10 h en estabilizarse; H0 se pasa al 10-dic; la carga inicial cae en la semana del 22-dic, con navidades, y T3 de la ADR se activa.",
+      "arreglo": "Fijar en H0 y H1 una revisión de horas consumidas con una regla escrita: si en H1 el desfase supera 10 h, se decide con Tomás qué sale, en lugar de descubrirlo en H3."
+    },
+    {
+      "id": "M6",
+      "paso": "PR-16 (criterio de terminado: 'la carga inicial ejecutada de verdad')",
+      "requisito": "Regla 1.6 del plan y plantilla de PR ('nada de datos reales en el cuerpo')",
+      "problema": "El criterio de terminado exige ejecutar una operación en producción con datos reales antes de mezclar el PR, lo que obliga a desplegar una rama sin revisar o a bloquear la mezcla por una dependencia operativa (pregunta 9 del plan).",
+      "escenario": "Tomás confirma el despliegue el 9-dic; el PR-16 está listo el 8-dic pero no se puede mezclar hasta correr la carga; PR-17 y PR-18 esperan detrás.",
+      "arreglo": "Separar: PR-16 se mezcla con el comando y la consulta de cobertura probados con fixtures; la carga inicial es una operación con su propio registro (fecha, salidas agregadas, T1) enlazado desde el PR, no un criterio de mezcla."
+    }
+  ],
+  "descartados_por_exoticos": [
+    {
+      "idea": "El proveedor cambia de versión de modelo entre la carga inicial y la demo y la lista mezcla dos versiones (F26).",
+      "por_que": "Ventana de seis semanas con el modelo fijado en configuración; fallas.md ya lo deja como consulta manual sobre la auditoría de D15 y la pregunta abierta 9 de SPEC lo tiene en manos de Tomás."
+    },
+    {
+      "idea": "Dos ejecutores (comando de carga y bucle del proceso web) superan juntos el límite de tasa del proveedor.",
+      "por_que": "La carga se corre de noche con tope de concurrencia y espera creciente (F10, PR-14); el único efecto es una carga más lenta, no una violación de la SPEC."
+    },
+    {
+      "idea": "Alguien burla el test de enumeración de PR-04 con SQL crudo en una cadena de texto.",
+      "por_que": "Un solo desarrollador y PRs de 400 líneas: el riesgo es de olvido, no de evasión deliberada; el plan ya exige que el PR declare qué patrones detecta y cuáles no."
+    },
+    {
+      "idea": "Zona horaria del límite '1/día' del botón de recalcular.",
+      "por_que": "fallas.md lo declara fuera de alcance y PR-23 obliga a decir qué zona usa; el peor caso es un segundo recálculo en un día, dentro del techo."
+    },
+    {
+      "idea": "Caída de Postgres o falta de conexiones durante la demo.",
+      "por_que": "Es la plataforma actual, no Match (F20); el plan no lo empeora y no hay nada que un paso de Match pueda hacer al respecto."
+    },
+    {
+      "idea": "La sesión de staff de Criba 'por empresa' en las fixtures de PR-03 no modela a un soporte que atiende a varias empresas.",
+      "por_que": "Es un detalle de fixtures sin efecto en producción; la SPEC no define cómo es la sesión de staff y el plan no decide nada al respecto."
+    }
+  ]
+}
