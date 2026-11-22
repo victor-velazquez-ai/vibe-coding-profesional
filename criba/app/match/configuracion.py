@@ -87,10 +87,33 @@ class Proveedor(Protocol):
     ya pseudonimizado» (`docs/arquitectura.md` §5.4). La otra mitad es el rechazo
     en ejecución, `exigir_payload`, que toda implementación llama en su primera
     línea: una anotación no es un control. Asíncrono porque ADR-001 lo exige (T5).
+
+    **`descripcion_de_vacante` es el tercer dato del pedido**, y es dato de la
+    **empresa**, no del candidato (decisión de Víctor del 22-nov-2026 sobre el
+    hallazgo 1 de `docs/prs/PR-09.md`, propuesta en
+    `docs/decisiones-propuestas/2026-11-22-proveedor-y-vacante.md`). Va aquí y no
+    dentro de `PayloadPseudonimizado` porque ese tipo es **lo que la frontera
+    exige y la fábrica única construye**: si además llevara dato de la empresa,
+    «pseudonimizado» dejaría de significar los seis datos del candidato de CA2 y
+    `exigir_payload` no tendría qué verificar. Sin este dato el modelo responde a
+    «¿qué tan bueno es este CV?», que no es la pregunta: `SPEC.md` alcance 1
+    puntúa el par (candidato, vacante) y el alcance 2 y D13 enumeran las entradas
+    —«solo el texto del CV y la descripción de la vacante»—.
+
+    **Tiene valor por omisión** por una razón escrita: el recorrido de
+    implementaciones de CA2 (`tests/match/test_pseudonimizacion.py`) llama
+    `puntuar(cuerpo, idioma)` con dos argumentos para comprobar que la frontera
+    rechaza un cuerpo crudo, y ese rechazo tiene que ocurrir antes de que importe
+    qué vacante era. Lo que hace una implementación con la descripción vacía
+    —«vacante sin descripción → sin score con motivo», `SPEC.md` alcance 6— es de
+    **PR-11** y no se decide aquí.
     """
 
     async def puntuar(
-        self, payload: PayloadPseudonimizado, idioma: str
+        self,
+        payload: PayloadPseudonimizado,
+        idioma: str,
+        descripcion_de_vacante: str = "",
     ) -> RespuestaDelProveedor: ...
 
 
