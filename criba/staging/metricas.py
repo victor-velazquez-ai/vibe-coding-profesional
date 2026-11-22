@@ -5,7 +5,8 @@ de solo lectura y el rol que solo ve las vistas agregadas de `metricas`. No hay 
 de pedir otra cosa: si la consulta toca `candidatos` o `match_scores`, Postgres
 responde «permission denied», y eso es lo que tiene que pasar.
 
-  uv run --env-file staging/staging.env python staging/metricas.py \n      "SELECT * FROM metricas.scores_por_vacante"
+  uv run --env-file staging/staging.env python staging/metricas.py
+      "SELECT * FROM metricas.scores_por_vacante"
 
 Sin `docker exec` a propósito: en `.claude/settings.json` cualquier `docker` pide
 permiso, y en una sesión sin persona delante (`claude -p`) pedir permiso es no poder.
