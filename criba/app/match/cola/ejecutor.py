@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.match.cola.trabajos import tomar
 from app.match.configuracion import Proveedor, ajustes_match
-from app.match.proveedor.mock import ProveedorMock
+from app.match.proveedor.cliente import proveedor_configurado
 from app.match.repositories.contexto import ContextoDeEmpresa
 from app.match.repositories.match_repo import RepositorioDeMatch
 from app.match.services.scoring import MatchService
@@ -69,7 +69,14 @@ async def una_pasada(bd: Session, proveedor: Proveedor | None = None) -> int:
 
     repo.marcar_trabajo(trabajo.id, "en_curso")
     try:
-        await MatchService(repo, proveedor or ProveedorMock()).puntuar(trabajo)
+        # **El proveedor lo elige la configuración, no este bucle** (PR-09). El
+        # argumento sigue existiendo para los tests que inyectan su doble; lo que
+        # cambia es el valor por omisión, que antes era `ProveedorMock()` escrito
+        # a mano aquí. Sin esto, el modo de configuración sería una variable de
+        # entorno que no cambia nada: el cliente real existiría y no habría forma
+        # de llegar a él. Y se pregunta **por pasada**, no al importar: así
+        # encender el modo no obliga a reiniciar nada.
+        await MatchService(repo, proveedor or proveedor_configurado()).puntuar(trabajo)
     except Exception as exc:  # el motivo queda en la fila, no en un log con PII
         repo.marcar_trabajo(trabajo.id, "error", motivo=type(exc).__name__[:LARGO_DEL_MOTIVO])
         return 1
