@@ -13,6 +13,7 @@ Todo el material es **sintético** (D3 modificado, D15, F12).
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator
+from contextlib import suppress
 from dataclasses import dataclass
 from functools import lru_cache
 from itertools import count
@@ -31,6 +32,13 @@ from app.match.routers.vacante import PREFIJO
 from app.plataforma.modelos import Candidato, Empresa, Postulacion, Rol, Usuario, Vacante
 from app.plataforma.seguridad import hash_contrasena
 from app.plataforma.sesion import ContextoEmpresa
+from tests.dobles.cli import (
+    NOMBRE_DE_LA_COSTURA,
+    CLIDoblado,
+    adaptador,
+    cli_que_prohibe_llamadas,
+    salida_del_cli,
+)
 from tests.dobles.proveedor import RAZONES, ProveedorContado
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -249,6 +257,69 @@ def _caminos(rutas: Iterable[object]) -> Iterator[str]:
         camino = getattr(ruta, "path", None)
         if isinstance(camino, str):
             yield camino
+
+
+# --- PR-09 · el cliente real del proveedor ----------------------------------
+
+
+@pytest.fixture(autouse=True)
+def ningun_cli_de_verdad(monkeypatch: pytest.MonkeyPatch) -> None:
+    """**Ningún test lanza el CLI del proveedor de verdad** (PR-09, N4).
+
+    Es `autouse` a propósito: el día que exista el adaptador real, el olvido de un
+    doble en un test cualquiera no puede convertirse en un proceso `claude -p`
+    lanzado desde la suite —con un CV dentro—. Con el doble prohibitivo puesto por
+    omisión, ese olvido es un test rojo y no una llamada.
+
+    El `suppress` es lo que hace que esta fixture **no** sea un error de montaje
+    mientras PR-09 no está escrito: hasta entonces no hay costura que doblar y la
+    fixture es un no-op. El rojo del paso vive en sus `assert`, no aquí.
+    """
+    with suppress(AssertionError):
+        puerta = adaptador()
+        monkeypatch.setattr(
+            puerta.modulo_de_la_costura, NOMBRE_DE_LA_COSTURA, cli_que_prohibe_llamadas()
+        )
+
+
+@pytest.fixture
+def cli(monkeypatch: pytest.MonkeyPatch) -> Callable[..., CLIDoblado]:
+    """Instala el doble del subproceso sobre la costura del adaptador y lo devuelve.
+
+    Devuelve un **instalador** y no el doble ya puesto porque resolver la costura
+    es lo que falla mientras PR-09 no existe: así el `assert` que lo dice ocurre
+    dentro del cuerpo del test, que es donde se lee.
+    """
+
+    def instalar(doble: CLIDoblado | None = None) -> CLIDoblado:
+        elegido = doble if doble is not None else CLIDoblado(salida=salida_del_cli())
+        monkeypatch.setattr(
+            adaptador().modulo_de_la_costura, NOMBRE_DE_LA_COSTURA, elegido, raising=True
+        )
+        return elegido
+
+    return instalar
+
+
+@pytest.fixture
+def modo(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., None]]:
+    """Fija el modo de proveedor por variable de entorno; sin argumentos, el de omisión.
+
+    Igual que `activacion` en `test_activacion_por_empresa.py`: el **valor por
+    omisión** es un caso que hay que poder ejercer, y es el que la CI usa (N4: el
+    MOCK sigue siendo el modo por omisión y el único que la CI corre).
+    """
+
+    def fijar(valor: str | None = None) -> None:
+        variable = adaptador().variable_de_modo
+        if valor is None:
+            monkeypatch.delenv(variable, raising=False)
+        else:
+            monkeypatch.setenv(variable, valor)
+        ajustes_match.cache_clear()
+
+    yield fijar
+    ajustes_match.cache_clear()
 
 
 def repo_de(sesion: Session, empresa: EmpresaDePrueba) -> RepositorioDeMatch:
