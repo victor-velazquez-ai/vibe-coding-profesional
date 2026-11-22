@@ -21,3 +21,4 @@ wheels/
 logs/
 .run/
 *.db
+.claude/estado/
