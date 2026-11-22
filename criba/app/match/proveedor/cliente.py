@@ -1,7 +1,9 @@
 """Adaptador del proveedor real, detrás de la frontera de PR-08 (PR-09, N4).
 
-**Qué proveedor** (N4, decisión de Víctor del 22-nov-2026, que `SPEC.md`
-§Privacidad deja en sus manos «dentro de esa restricción»): el modelo es Claude.
+**Qué proveedor** (N4 acotada, decisión de Víctor del 22-nov-2026, registrada en
+`docs/decisiones-propuestas/2026-11-22-proveedor-y-vacante.md` §1; `SPEC.md`
+§Privacidad la deja en sus manos «dentro de esa restricción»): el modelo es
+Claude.
 En **este** repo del curso no hay clave de API, así que el cliente real llama al
 CLI `claude -p` por subproceso, **sin herramientas y sin sesión**. En el proyecto
 real del cliente sería la API con su clave en una variable de entorno, nunca en el

@@ -15,7 +15,8 @@ La versión mínima de la Etapa 0, con lo que **no** hace dicho en voz alta:
 - **no elige qué entra en el pedido por su cuenta**: son las dos entradas de
   `SPEC.md` alcance 2 y D13 —el texto del CV y la descripción de la vacante— y
   las dos salen del trabajo y del repositorio, no de un argumento del llamador
-  (decisión de Víctor del 22-nov-2026 sobre el hallazgo 1 de PR-09).
+  (decisión de Víctor del 22-nov-2026 sobre el hallazgo 1 de PR-09,
+  `docs/decisiones-propuestas/2026-11-22-proveedor-y-vacante.md` §2).
 
 Lo que sí hace, y es de este paso: **CA13 en el estado**. O hay score, o hay
 «sin score» con su motivo visible; nunca un cero en lugar de un score. Un
