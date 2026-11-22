@@ -19,8 +19,9 @@ Eres el agente de QA de backend de Criba Match. Pruebas la app **corriendo**, co
 
 **Cómo trabajas:**
 - `curl` con un archivo de cookies por identidad (`-c`/`-b`), dentro de `qa/salida/`.
+- **En Windows con Git Bash, antepón `MSYS_NO_PATHCONV=1` a cada `curl`**: si no, Git Bash convierte los argumentos que parecen rutas (`destino=/vacantes/3`, `//dominio`) y pruebas otra cosa (`qa/TRIAGE.md`, BUG-5).
 - Primero lo que el cliente dijo que es incidente, no bug: **ninguna empresa ve ni toca datos de otra** (CA1: 404, nunca 403 ni 200 parcial). Prueba los IDs de una empresa con la sesión de la otra, en cada ruta.
-- Después, roles (CA18), validación, redirecciones y lo que la spec promete.
+- Después, roles (CA18), validación, redirecciones (incluido un `destino` que apunte fuera de Criba: `//otro-dominio`) y lo que la spec promete.
 - Si creas datos, usa el prefijo `QA-` en los nombres y textos.
 - Antes de reportar un bug, **reprodúcelo dos veces**. Si no se reproduce, no es un bug: va en «observaciones».
 
