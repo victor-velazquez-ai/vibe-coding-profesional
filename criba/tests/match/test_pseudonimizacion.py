@@ -28,6 +28,18 @@ Y uno más, que el plan no enumera pero que es el requisito número uno del clie
 (D4, CA1): **ningún CV cruza de empresa en el payload** (test 7), comprobado por
 el camino de escritura real y no llamando al pseudonimizador a mano.
 
+**Tres más, de la auditoría de CVs sintéticos del 22-nov-2026** (tests 8, 9 y
+10). Los siete de arriba quedaron en verde y la auditoría encontró dos fugas que
+ninguno imaginaba, las dos **dentro de CA2** y las dos sobre uno de los seis
+datos de §1a: el candidato que escribe su propio nombre **sin acentos** en el
+texto (test 8) y la foto que llega como **nombre de archivo adjunto** y no como
+URL (test 9). La razón por la que los siete anteriores no las ven es la misma en
+los dos casos: las fixtures de arriba escriben la PII del texto libre **igual,
+carácter por carácter**, que los campos estructurados, así que prueban la
+igualdad exacta y no el parecido. El test 10 las vuelve a mirar por el camino de
+escritura real y con las dos empresas, que es donde el hallazgo dice que ocurrió
+(«sale entero al proveedor»).
+
 **Cómo fallan estos tests mientras la frontera no existe:** con un `assert` que
 dice qué símbolo falta, no con un `ImportError` en la recolección. De eso se
 encarga `frontera()`, abajo: los dos módulos del mapa de §2 ya existen (PR-01) y
@@ -528,6 +540,257 @@ async def test_el_payload_de_cada_empresa_lleva_solo_su_cv_y_nada_de_la_otra(
     sur = [t for t in textos if PII_EN.marca in t]
     assert len(norte) == len(sur) == 1, "un payload no lleva el CV de su empresa"
     assert PII_EN.marca not in norte[0] and PII_ES.marca not in sur[0]
+
+    for empresa, candidato in ((northstar, de_northstar), (meridian, de_meridian)):
+        scores = repo_de(sesion, empresa).scores()
+        assert [(s.candidato_id, s.empresa_id) for s in scores] == [
+            (candidato.id, empresa.empresa.id)
+        ], f"{empresa.slug} no guardó exactamente su score"
+
+
+# --- 8, 9 y 10 · la auditoría de CVs sintéticos del 22-nov-2026 -------------
+#
+# Dos fugas, las dos de CA2 y las dos sobre uno de los seis datos de §1a. No
+# amplían el criterio: lo leen donde los tests 1 a 7 no miraban, porque sus
+# fixtures escriben el dato del texto libre **idéntico** al del campo
+# estructurado y así solo prueban la igualdad exacta.
+
+
+@dataclass(frozen=True, slots=True)
+class Fuga:
+    """Un CV de la auditoría: sus campos, su marca y lo que no puede salir.
+
+    `fugas` son los valores que **hoy** salen enteros al proveedor, declarados
+    aquí al lado del test y con la etiqueta del dato de §1a al que pertenecen. El
+    test asercia primero que la fixture los trae (si no, pasaría sin probar nada,
+    que es el punto ciego que F2 y F15 nombran) y después que ninguno sobrevive.
+    """
+
+    archivo: str
+    nombre: str
+    correo: str
+    telefono: str
+    marca: str
+    fugas: dict[str, str]
+
+    def crudo(self) -> str:
+        return cv(self.archivo)
+
+
+# Fuga 1 · «José Ángel Treviño» firma el CV como «Jose Angel Trevino».
+# El campo `nombre` lleva los acentos y el texto no, así que la pasada de valores
+# conocidos —que compara el valor tal cual, sin mayúsculas pero **con** acentos—
+# no reconoce ni el nombre completo ni sus partes. Es nombre, el primero de §1a.
+FUGA_SIN_ACENTOS = Fuga(
+    archivo="pii_sin_acentos_es",
+    nombre="José Ángel Treviño",
+    correo="jose.trevino@ejemplo.test",
+    telefono="+1 956 555 0143",
+    marca="admisiones hospitalarias",
+    fugas={
+        "nombre completo sin acentos (§1a · nombre)": "Jose Angel Trevino",
+        "nombre de pila sin acento (§1a · nombre)": "Jose",
+        "segundo nombre sin acento (§1a · nombre)": "Angel",
+        "apellido sin acento (§1a · nombre)": "Trevino",
+    },
+)
+
+# Fuga 2 · la foto de «Sofía Ramírez» llega como `[Foto adjunta: …png]`.
+# No es una URL, así que el patrón de enlaces no la toca; y el nombre que lleva
+# dentro va sin acentos y pegado con guion bajo, así que la pasada de valores
+# conocidos tampoco: `_` es carácter de palabra y el borde `(?!\w)` no casa. Son
+# dos datos de §1a a la vez, la foto y el nombre.
+FUGA_FOTO_ADJUNTA = Fuga(
+    archivo="pii_foto_adjunta_es",
+    nombre="Sofía Ramírez",
+    correo="sofia.ramirez@ejemplo.test",
+    telefono="+1 210 555 0188",
+    marca="instrumentista de guardia",
+    fugas={
+        "archivo de la foto (§1a · fotos)": "sofia_ramirez_2026.png",
+        "nombre dentro del archivo de la foto (§1a · nombre)": "sofia_ramirez",
+        "apellido sin acento (§1a · nombre)": "ramirez",
+    },
+)
+
+
+def candidato_de(sesion: Session, empresa: EmpresaDePrueba, fuga: Fuga) -> Candidato:
+    """El candidato de una fuga, con sus campos **acentuados** y su CV sin acentos.
+
+    Es la diferencia con `candidato_con`: ahí los campos y el texto llevan el
+    mismo valor carácter por carácter, y aquí no, que es justo el caso que la
+    auditoría encontró.
+    """
+    candidato = Candidato(
+        empresa_id=empresa.empresa.id,
+        nombre=fuga.nombre,
+        correo=fuga.correo,
+        telefono=fuga.telefono,
+        links=[],
+        cv_texto=fuga.crudo(),
+    )
+    sesion.add(candidato)
+    sesion.flush()
+    sesion.add(
+        Postulacion(
+            empresa_id=empresa.empresa.id,
+            candidato_id=candidato.id,
+            vacante_id=empresa.vacante.id,
+        )
+    )
+    sesion.flush()
+    return candidato
+
+
+def fugas_en(cuerpo: str, fuga: Fuga) -> list[str]:
+    """Las etiquetas de los datos de `fuga` que siguen en el cuerpo enviado.
+
+    La comparación **ignora mayúsculas** porque CA2 habla del dato y no de su
+    forma de escribirlo: un nombre de archivo en minúsculas es el mismo nombre.
+    Lo que no ignora son los acentos — no se normaliza nada aquí a propósito:
+    cómo se reconoce «Jose» como «José» es decisión del constructor, y un test
+    que la tomara estaría escribiendo el arreglo en vez del criterio.
+    """
+    plano = cuerpo.lower()
+    return [etiqueta for etiqueta, valor in fuga.fugas.items() if valor.lower() in plano]
+
+
+@pytest.mark.parametrize(
+    "fuga", (FUGA_SIN_ACENTOS, FUGA_FOTO_ADJUNTA), ids=("sin-acentos", "foto-adjunta")
+)
+def test_la_fixture_de_cada_fuga_trae_de_verdad_el_dato_que_se_escapa(fuga: Fuga) -> None:
+    """La guardia de las dos fixtures nuevas, antes de mirar el pseudonimizador.
+
+    Si un día alguien «limpia» la fixture y le quita el nombre sin acentos o el
+    archivo de la foto, los tests 8 y 9 se pondrían verdes sin que nadie hubiera
+    arreglado nada. Esto es lo que impide ese verde (F2, F15).
+    """
+    crudo = fuga.crudo()
+    for etiqueta, valor in fuga.fugas.items():
+        assert valor in crudo, f"la fixture {fuga.archivo} ya no trae «{etiqueta}»"
+    assert fuga.marca in crudo, "la fixture no trae su marca: el test 10 no podría distinguirla"
+    assert fuga.nombre in crudo, (
+        "la fixture no trae el nombre acentuado: sin él no se distingue la fuga "
+        "de un pseudonimizador que no funcione en absoluto"
+    )
+
+
+# --- 8 · el nombre escrito sin acentos ------------------------------------
+
+
+def test_el_nombre_escrito_sin_acentos_en_el_cv_tampoco_sale_en_el_cuerpo_enviado(
+    sesion: Session, northstar: EmpresaDePrueba
+) -> None:
+    """CA2 · primera fuga de la auditoría · «Jose Angel Trevino» es su nombre.
+
+    §1a dice «nombre», no «el nombre tal como está escrito en la base de datos».
+    Un candidato que firma su CV sin tildes —porque el teclado, porque el PDF,
+    porque la nómina no las admite— sigue siendo identificable por quien lea el
+    cuerpo al otro lado: «Jose Angel Trevino» nombra a una sola persona. Esto no
+    es la pregunta abierta 2 (empleador, universidad, ciudad): es el primero de
+    los seis datos que §1a sí nombra, así que la regla 1.5 de `PLAN.md` no admite
+    `xfail` aquí.
+
+    La aserción que importa es la del **nombre acentuado también fuera**: prueba
+    que el pseudonimizador no está roto del todo, y que lo que falla es solo el
+    parecido. Si las dos mitades fallaran juntas, el rojo no diría nada nuevo.
+    """
+    f = frontera()
+    fuga = FUGA_SIN_ACENTOS
+
+    payload = f.pseudonimizar(candidato_de(sesion, northstar, fuga))
+
+    assert fuga.nombre not in payload.cv, "ni el nombre acentuado sale: la frontera no funciona"
+    assert fugas_en(payload.cv, fuga) == [], (
+        "el cuerpo enviado lleva el nombre del candidato escrito sin acentos (CA2, §1a · nombre): "
+        f"{fugas_en(payload.cv, fuga)}"
+    )
+    # Y se quitó el dato, no la frase: el texto que decide el score sigue ahí (F1).
+    assert fuga.marca in payload.cv, "el pseudonimizador se llevó el texto que decide el score"
+
+
+# --- 9 · la foto que llega como nombre de archivo adjunto -----------------
+
+
+def test_el_nombre_del_archivo_de_la_foto_adjunta_no_sale_en_el_cuerpo_enviado(
+    sesion: Session, northstar: EmpresaDePrueba
+) -> None:
+    """CA2 · segunda fuga de la auditoría · `[Foto adjunta: sofia_ramirez_2026.png]`.
+
+    El test 4 cubre la foto **cuando es una URL** (`![Foto de perfil](https://…)`)
+    y ahí el patrón de enlaces la barre. Una foto adjunta no tiene URL: tiene el
+    nombre del archivo, que es la forma en que una foto llega a un CV subido. Y
+    ese nombre lleva dentro el de la candidata, con las palabras pegadas por
+    guion bajo y sin acentos.
+
+    Son **dos** de los seis datos de §1a en la misma línea, y el rojo se sostiene
+    con cualquiera de las dos lecturas de «fotos»: si la referencia a la foto
+    contara como foto, falla por foto; y si no contara, falla igual por el
+    nombre, que no admite lectura estrecha. Lo que **no** se asercia aquí es cómo
+    se arregla —si cae todo el nombre de archivo de imagen o solo la parte que es
+    un nombre—: eso es del constructor.
+    """
+    f = frontera()
+    fuga = FUGA_FOTO_ADJUNTA
+
+    payload = f.pseudonimizar(candidato_de(sesion, northstar, fuga))
+
+    assert fuga.nombre not in payload.cv, "ni el nombre acentuado sale: la frontera no funciona"
+    assert fugas_en(payload.cv, fuga) == [], (
+        "el cuerpo enviado lleva la foto adjunta de la candidata y su nombre dentro "
+        f"(CA2, §1a · fotos y nombre): {fugas_en(payload.cv, fuga)}"
+    )
+    assert fuga.marca in payload.cv, "se fue la sección entera, no el dato (F1)"
+
+
+# --- 10 · las dos fugas por el camino real, y sin cruzar de empresa -------
+
+
+async def test_las_dos_fugas_tampoco_salen_por_el_camino_real_ni_cruzan_de_empresa(
+    sesion: Session,
+    northstar: EmpresaDePrueba,
+    meridian: EmpresaDePrueba,
+    activar_match: Callable[[str], None],
+    proveedor_contado: ProveedorContado,
+) -> None:
+    """CA2 y CA1 · las dos fugas donde la auditoría dice que ocurrieron.
+
+    El hallazgo es «sale entero **al proveedor**», y los tests 8 y 9 llaman al
+    pseudonimizador a mano: eso deja sin comprobar lo que §5.4 teme, que el
+    cuerpo que de verdad sale sea otro. Aquí los dos pares se encolan, el bucle
+    los toma, y lo que se asercia es lo que el proveedor recibió.
+
+    Y se asercia con las **dos empresas**, que es el requisito número uno del
+    cliente (D4, CA1, [03:03]): un pseudonimizador que arreglara las dos fugas
+    leyendo los campos del candidato equivocado las cerraría en el test 8 y 9 y
+    seguiría mandando el nombre de la candidata de Meridian dentro del payload de
+    Northstar. **Meridian se activa a propósito**, igual que en el test 7: lo que
+    se mide aquí es el cruce de datos, no la activación por empresa (CA3, PR-10).
+    """
+    f = frontera()
+    activar_match(meridian.slug)
+    de_northstar = candidato_de(sesion, northstar, FUGA_SIN_ACENTOS)
+    de_meridian = candidato_de(sesion, meridian, FUGA_FOTO_ADJUNTA)
+    encolar(sesion, northstar.vacante.id, de_northstar.id)
+    encolar(sesion, meridian.vacante.id, de_meridian.id)
+
+    assert await pasadas(sesion, proveedor_contado) == 2
+    enviados = proveedor_contado.payloads
+    assert len(enviados) == 2
+    assert all(isinstance(cuerpo, f.tipo) for cuerpo in enviados)
+
+    textos = [cuerpo.cv for cuerpo in enviados]
+    for fuga in (FUGA_SIN_ACENTOS, FUGA_FOTO_ADJUNTA):
+        for texto in textos:
+            assert fugas_en(texto, fuga) == [], (
+                f"salió al proveedor el dato de {fuga.archivo} (CA2): {fugas_en(texto, fuga)}"
+            )
+
+    # Cada payload lleva **su** CV: ni mezclados, ni el de la otra empresa.
+    norte = [t for t in textos if FUGA_SIN_ACENTOS.marca in t]
+    sur = [t for t in textos if FUGA_FOTO_ADJUNTA.marca in t]
+    assert len(norte) == len(sur) == 1, "un payload no lleva el CV de su empresa"
+    assert FUGA_FOTO_ADJUNTA.marca not in norte[0] and FUGA_SIN_ACENTOS.marca not in sur[0]
 
     for empresa, candidato in ((northstar, de_northstar), (meridian, de_meridian)):
         scores = repo_de(sesion, empresa).scores()

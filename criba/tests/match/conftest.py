@@ -37,11 +37,15 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 # Los dos últimos los añade PR-08: la guardia de «el archivo se declara
 # sintético» de PR-03 tiene que cubrir también las fixtures de PII, que son las
 # que más se parecen a un CV real (F12).
+# Los dos últimos los añade la auditoría de CVs sintéticos del 22-nov-2026 (las
+# dos fugas de CA2: el nombre sin acentos y el archivo de la foto adjunta).
 ARCHIVOS_DE_CV = (
     "enfermeria_es",
     "enfermeria_en",
     "pii_en_texto_libre_es",
     "pii_en_texto_libre_en",
+    "pii_sin_acentos_es",
+    "pii_foto_adjunta_es",
 )
 CONTRASENA = "prueba1234"
 DESCRIPCION = "Piso de medicina interna, turno nocturno. Licencia RN vigente en Texas."
