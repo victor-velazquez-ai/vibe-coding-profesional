@@ -186,14 +186,32 @@ def pseudonimizar(candidato: Candidato) -> PayloadPseudonimizado:
     escrito por dentro.
     """
     texto = unicodedata.normalize("NFC", candidato.cv_texto or "")
-    sustituciones = 0
+    texto, por_patron = _pasada_de_patrones(texto)
+    texto, por_valor_conocido = _pasada_de_valores_conocidos(texto, candidato)
+    return PayloadPseudonimizado(cv=texto, sustituciones=por_patron + por_valor_conocido)
+
+
+def _pasada_de_patrones(texto: str) -> tuple[str, int]:
+    """La pasada 1: lo que cae **aunque no esté en ningún campo** del candidato.
+
+    Es una función y no un bucle dentro de `pseudonimizar` porque las dos pasadas
+    son las dos mitades de R1·B3 y cada una tiene su propia razón de existir: esta
+    es la que cubre los datos de §1a que el esquema no guarda en ninguna columna.
+    """
+    hechas = 0
     for patron, marca in PATRONES:
-        texto, hechas = patron.subn(marca, texto)
-        sustituciones += hechas
+        texto, cuantas = patron.subn(marca, texto)
+        hechas += cuantas
+    return texto, hechas
+
+
+def _pasada_de_valores_conocidos(texto: str, candidato: Candidato) -> tuple[str, int]:
+    """La pasada 2: lo que está en los campos del candidato, fuera del texto libre."""
+    hechas = 0
     for valor, marca in _valores_conocidos(candidato):
-        texto, hechas = _quitar_valor(texto, valor, marca)
-        sustituciones += hechas
-    return PayloadPseudonimizado(cv=texto, sustituciones=sustituciones)
+        texto, cuantas = _quitar_valor(texto, valor, marca)
+        hechas += cuantas
+    return texto, hechas
 
 
 def _valores_conocidos(candidato: Candidato) -> list[tuple[str, str]]:
@@ -251,7 +269,8 @@ def _tolerante_a_acentos(valor: str) -> str:
     """
     piezas: list[str] = []
     for caracter in unicodedata.normalize("NFC", valor):
-        familia = _FAMILIAS_DE_LETRA.get(_sin_diacriticos(caracter).lower())
+        base = _letra_base(caracter)
+        familia = _FAMILIAS_DE_LETRA.get(base) if base else None
         piezas.append(f"[{re.escape(familia)}]" if familia else re.escape(caracter))
     return "".join(piezas)
 
@@ -261,23 +280,39 @@ def _sin_diacriticos(texto: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", texto) if not unicodedata.combining(c))
 
 
+def _letra_base(caracter: str) -> str | None:
+    """**Qué letra ASCII hay debajo** de este carácter, o `None` si no hay una sola.
+
+    Está en una función sola porque es la pregunta que tanto la tabla de familias
+    como `_tolerante_a_acentos` tienen que contestar, y la contestaban por
+    separado: así hay un único sitio donde ensancharla el día que aparezca una
+    letra que esta no reconozca.
+
+    `None` es la respuesta honesta para la eszett, la ligadura `æ` o la i sin
+    punto del turco: ahí no hay «la misma letra sin tilde» y este módulo no la
+    inventa.
+    """
+    sin_diacriticos = _sin_diacriticos(caracter)
+    if len(sin_diacriticos) == 1 and sin_diacriticos.isascii() and sin_diacriticos.isalpha():
+        return sin_diacriticos.lower()
+    return None
+
+
 def _familias_de_letra() -> dict[str, str]:
     """Por cada letra ASCII, **todas** las letras latinas que son esa misma letra.
 
     Se calcula una vez, al importar, recorriendo el bloque latino de Unicode y
-    preguntándole a `unicodedata` cuál es la letra de debajo del acento: una tabla
-    escrita a mano se quedaría corta el día del primer apellido con `ğ` o con `ů`
-    (F34). Fuera quedan las letras cuya forma sin acento no es una sola letra
-    ASCII —la eszett, la ligadura `æ`, la i sin punto del turco—: ahí no hay «la
-    misma letra sin tilde» y este módulo no la inventa.
+    preguntándole a `_letra_base` cuál es la letra de debajo: una tabla escrita a
+    mano se quedaría corta el día del primer apellido con `ğ` o con `ů` (F34).
+    Fuera quedan las letras para las que `_letra_base` no sabe contestar.
     """
     familias: dict[str, set[str]] = {}
     for punto in range(0x00C0, 0x0250):  # Latin-1 Supplement, Latin Extended-A y B
         caracter = chr(punto)
-        base = _sin_diacriticos(caracter)
+        base = _letra_base(caracter)
         minuscula = caracter.lower()
-        if len(base) == 1 and base.isascii() and base.isalpha() and len(minuscula) == 1:
-            familias.setdefault(base.lower(), set()).add(minuscula)
+        if base and len(minuscula) == 1:
+            familias.setdefault(base, set()).add(minuscula)
     return {base: "".join(sorted(variantes | {base})) for base, variantes in familias.items()}
 
 
