@@ -136,7 +136,7 @@ más degrada el texto que decide el score (F1).
 | `casos.py` | dónde está el archivo y cómo se lee. Sin conducta |
 | `calificacion.py` | las cuatro dimensiones de un resultado. **No llama a nadie** |
 | `informe.py` | pass^1, pass^k, el total, la tabla y el JSON |
-| `corredor.py` | el camino de producción. El único módulo que importa de `app/` |
+| `corredor.py` | el camino de producción. El único que **llama** a `app/` (de `calificacion.py` solo sale un import de tipo) |
 | `__main__.py` | la línea de órdenes y el código de salida |
 
 ## Qué está probado y qué solo está medido

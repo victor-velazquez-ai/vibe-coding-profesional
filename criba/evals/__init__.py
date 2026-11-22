@@ -33,12 +33,13 @@ cruzar. El aislamiento multiempresa está probado donde ocurre
 
 - `casos.py` — dónde está el archivo, cómo se lee y cuáles son los cortes de banda
   que **él declara**. Ninguna banda está escrita a mano en el código;
-- `calificacion.py` — las cuatro dimensiones de un resultado, y nada más: no llama
-  a nadie;
+- `calificacion.py` — las cuatro dimensiones de un resultado, y nada más: **no
+  llama a nadie**. De `app/` solo trae un tipo, el `RespuestaDelProveedor` que el
+  camino devuelve;
 - `informe.py` — pass^1, pass^k, el total y las dos formas del informe (la tabla
   que se lee y el JSON que se guarda);
 - `corredor.py` — el **camino de producción** que se recorre, y el único módulo que
-  importa de `app/`.
+  **llama** a `app/`. La licencia que eso supone está escrita en su docstring.
 
 `python -m evals --proveedor mock --k 3` es la invocación de humo: sin red, en
 segundos y sin gastar nada. El `README.md` de este directorio dice cómo correrlo
