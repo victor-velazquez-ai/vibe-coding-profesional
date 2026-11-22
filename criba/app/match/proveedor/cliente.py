@@ -108,6 +108,11 @@ VARIABLES_DEL_ANFITRION = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_
 # casos, que son contrato ya escrito.
 CLAVES_DEL_SOBRE = ("is_error", "result", "structured_output", "modelUsage")
 
+# Con qué se unen las versiones cuando el CLI reporta **más de un modelo** en una
+# llamada (R2·M2). Sin espacio detrás de la coma a propósito: esta cadena viaja
+# dentro de una línea de log de `clave=valor` y de la fila de auditoría de PR-12.
+SEPARADOR_DE_MODELOS = ","
+
 CERCO = "```"
 
 # Con qué empieza un cuerpo JSON, y para qué sirve saberlo: un cerco puede traer
@@ -381,12 +386,31 @@ def _version_del_modelo(sobre: Mapping[str, object]) -> str:
 
     No el alias y no «la que pedimos por si acaso»: D15 y CA15 ponen esta cadena
     en cada fila de auditoría y en marzo tiene que ser verdad. Se pide la versión
-    fijada justo para que lo pedido y lo reportado coincidan; si el sobre reporta
-    exactamente un modelo, manda el reportado.
+    fijada justo para que lo pedido y lo reportado coincidan.
+
+    Las tres situaciones, y la del medio es la que la segunda ronda de revisión
+    corrigió (R2·M2):
+
+    - **un modelo reportado** → ese, aunque no sea el pedido. El día que el alias
+      resuelva a otra versión, o que el CLI caiga a su modelo por omisión, la
+      diferencia es exactamente lo que hay que registrar;
+    - **dos o más** → **todos**, en orden estable. Pasa de verdad: un modelo que
+      enruta a otro, o un reintento interno del CLI que cae a otro modelo, dejan
+      dos entradas en `modelUsage`. Antes se devolvía el **pedido**, que con dos
+      reportados distintos es una cadena que el CLI no reportó haber usado: una
+      fila de auditoría falsa, y una falsa es peor que una ausente porque nadie
+      puede distinguirla después. Y **no** se levanta un error tipado, que era la
+      otra salida razonable, porque el score sí se calculó: convertirlo en
+      «respuesta inválida» le costaría al candidato un paso por `pendiente` y la
+      llamada pagada dos veces (PR-14) por una respuesta que estaba bien, que es
+      el mismo criterio que `sin_cerco`. Qué hace la fila de auditoría con dos
+      versiones —dos filas, una cadena, una columna más— es de **PR-12**;
+    - **ninguno** → la pedida, que es la única fuente que queda y está en `argv`.
     """
     uso = sobre.get("modelUsage")
-    reportados = sorted(uso) if isinstance(uso, Mapping) else []
-    return reportados[0] if len(reportados) == 1 else MODELO
+    if not isinstance(uso, Mapping) or not uso:
+        return MODELO
+    return SEPARADOR_DE_MODELOS.join(sorted(str(modelo) for modelo in uso))
 
 
 def interpretar(salida: str) -> RespuestaDelProveedor:
