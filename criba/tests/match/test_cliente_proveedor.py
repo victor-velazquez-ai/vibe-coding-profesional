@@ -22,7 +22,10 @@ CV dentro.
 Los tres controles que `PLAN.md` PR-09 pide, y dónde están:
 
 1. **la regla de log** (F12) → `test_logs_sin_cv.py`, con la clave de F19;
-2. **timeout y error tipado** → aquí, tests 4 y 5;
+2. **timeout y error tipado** → aquí, tests 4 y 5, y el **cerrojo sobre la cadena
+   de causas** que la segunda ronda de revisión pide (M4): lo que sale tipado no
+   puede llevar colgada la excepción cruda, que trae el prompt y la salida parcial
+   del proceso dentro;
 3. **el modo MOCK por configuración explícita, y que nunca abre red** → aquí,
    tests 1, 2 y 3, más el guardia de la única puerta (test 6).
 
@@ -462,6 +465,95 @@ async def test_ningun_fallo_del_cli_sale_como_excepcion_cruda(
     assert not isinstance(
         fallo.value, subprocess.SubprocessError | OSError | json.JSONDecodeError | KeyError
     ), f"el fallo sale crudo del adaptador: {type(fallo.value).__name__}"
+
+
+# --- 6b · el error tipado no arrastra la excepción cruda como causa ---------
+
+
+def _timeout_con_el_cv_dentro() -> CLIDoblado:
+    """El `TimeoutExpired` tal como llega: con el prompt y la salida parcial dentro."""
+    return CLIDoblado(
+        fallo=subprocess.TimeoutExpired(
+            cmd=["claude", "-p"], timeout=1.0, output=CV_SINTETICO, stderr=CV_SINTETICO
+        )
+    )
+
+
+def _codigo_de_salida_con_el_cv_dentro() -> CLIDoblado:
+    return CLIDoblado(
+        fallo=subprocess.CalledProcessError(
+            1, ["claude", "-p"], output=CV_SINTETICO, stderr=CV_SINTETICO
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "doblar",
+    (_timeout_con_el_cv_dentro, _codigo_de_salida_con_el_cv_dentro),
+    ids=("timeout", "codigo_de_salida"),
+)
+async def test_el_error_tipado_no_arrastra_la_excepcion_cruda_del_subproceso_como_causa(
+    cli: Callable[..., CLIDoblado], doblar: Callable[[], CLIDoblado]
+) -> None:
+    """F12, D15 · la cadena de causas es una superficie de salida más (ronda 2, M4).
+
+    Los tests 5 y 6 comprueban que lo que **sale** del adaptador es un error
+    tipado. Esto comprueba la otra mitad, que es la que hoy no asercia nadie: que
+    el error tipado no lleve **colgada** la excepción cruda del subproceso. Las dos
+    que este paso recibe llevan dentro la línea de órdenes, la salida parcial del
+    proceso y el error estándar —o sea el prompt y lo que el modelo había empezado
+    a responder— y Python engancha ese objeto al nuevo error por sí solo, sin que
+    nadie lo pida: `raise` dentro de un `except` deja la original en la cadena.
+
+    Por qué importa hoy que no hay fuga: `cola/ejecutor.py` no escribe la traza, y
+    por eso `test_logs_sin_cv.py` —que mira líneas de log y `str(error)`— queda
+    verde aunque la cadena se arrastre. El día que alguien añada el
+    `logging.exception` más natural del mundo en el bucle, el formateador imprime
+    la cadena y el CV de las ~680 personas de la demo acaba en los logs de la
+    plataforma, donde D15 no llega y el inventario de borrado de CA16 no lo ve. El
+    control de F12 no lo habría visto venir: la defensa existe (`raise … from
+    None`) y quitarla deja la suite verde.
+
+    Las dos cosas que se exigen, y cada una tapa una forma distinta de perderla:
+
+    - **`__cause__` vacío**: nadie encadena la cruda a propósito (`raise … from
+      fallo`), que es la forma en que esto se «arregla para depurar mejor» y la que
+      sí imprime el contenido en cualquier traza;
+    - **el contexto suprimido**: es lo que hace que el formateador de trazas de
+      Python —el que usa `logging.exception`— **no** imprima la original.
+
+    **Lo que este test no puede exigir, y queda dicho aquí:** `__context__` sigue
+    apuntando a la excepción cruda incluso con `from None`, porque el lenguaje lo
+    engancha igual y `from None` solo suprime su impresión. Un recolector de
+    errores que recorra la cadena por su cuenta —no el formateador estándar— sigue
+    viéndola con el CV en `output`/`stderr`. Limpiarla del todo es conducta nueva
+    en la única puerta del paso y es decisión de quien lleva el cuerpo del PR, no
+    de un test que la inventa.
+
+    Este test **nace en verde a propósito**: es un cerrojo sobre una defensa que ya
+    está escrita, y su trabajo es ponerse rojo el día que alguien quite el `from
+    None` o lo cambie por un `from fallo`.
+    """
+    puerta = adaptador()
+    doble = cli(doblar())
+
+    with pytest.raises(puerta.error) as fallo:
+        await puerta.real().puntuar(payload_sintetico(), IDIOMA_POR_OMISION)
+
+    assert doble.llamadas == 1 and isinstance(doble.fallo, BaseException), (
+        "el doble no llegó a levantar la excepción cruda: el test no está ejerciendo la cadena"
+    )
+    assert fallo.value.__cause__ is None, (
+        f"el error tipado encadena la excepción cruda del subproceso como causa "
+        f"({type(fallo.value.__cause__).__name__}): lleva la línea de órdenes y la salida "
+        "parcial del proceso, y cualquier traza de arriba las imprime (F12, D15)"
+    )
+    assert fallo.value.__suppress_context__, (
+        "el error tipado arrastra la excepción cruda del subproceso en su cadena de contexto "
+        "sin suprimirla: un `logging.exception` en el bucle imprimiría el prompt y la salida "
+        "parcial del CLI en los logs de la plataforma (F12, `docs/arquitectura.md` §5.5). La "
+        "defensa es `raise … from None` en el camino del fallo"
+    )
 
 
 # --- 7 · una sola puerta por la que puede salir un CV -----------------------

@@ -268,16 +268,66 @@ def payload_sintetico() -> PayloadPseudonimizado:
     return pseudonimizar(candidato_sintetico())
 
 
-def salida_del_cli(score: int = SCORE_DEL_CLI, razones: tuple[str, ...] = RAZONES_DEL_CLI) -> str:
-    """Lo que el CLI escribe en salida estándar: el score y sus tres razones.
+# El sobre con el que el CLI envuelve su respuesta cuando se le pide
+# `--output-format json`, que es lo que esta invocación pide **siempre** y lo que
+# `test_salida_del_cli.py` asercia en
+# `test_el_pedido_declara_el_formato_de_salida_del_que_depende_todo_el_paso`.
+# Las claves son las que el sobre real trae —medición 4b del cuerpo de PR-09, 26
+# claves— recortadas a las que el adaptador lee más relleno a propósito: el
+# relleno es lo que delata a un adaptador que distinga el sobre por «tiene
+# exactamente estas claves».
+SOBRE_DEL_CLI: dict[str, object] = {
+    "type": "result",
+    "subtype": "success",
+    "is_error": False,
+    "duration_ms": 18820,
+    "num_turns": 1,
+    "session_id": "sin-sesion",
+    "total_cost_usd": 0.0082462,
+}
 
-    JSON pelado y **sin versión de modelo dentro**, a propósito: la versión que la
-    auditoría de D15 y CA15 va a guardar tiene que ser la que el adaptador
-    **pidió**, no la que el CLI eligiera por su cuenta (ver el test de la
-    invocación). Un score fuera de rango, cuatro razones o un JSON roto son casos
-    de PR-11, no de este doble.
+
+def salida_del_cli(
+    score: int = SCORE_DEL_CLI,
+    razones: tuple[str, ...] = RAZONES_DEL_CLI,
+    *,
+    sobre: bool = True,
+) -> str:
+    """Lo que el CLI escribe en salida estándar: **el sobre** con el score dentro.
+
+    Emite el sobre de `--output-format json` y no un cuerpo pelado desde la ronda
+    de revisión de PR-09 (**M1**), y el cambio es de forma, no de criterio: con
+    `--output-format json` el CLI real **siempre** devuelve el sobre, así que el
+    cuerpo pelado era una forma que solo producía este doble. Media docena de
+    tests del adaptador —`test_cliente_proveedor.py`, `test_logs_sin_cv.py`,
+    `test_invocacion_endurecida.py`, `test_descripcion_de_vacante.py`— ejercían
+    por omisión una rama de `interpretar` que producción no recorre; con esto
+    recorren la de verdad sin que ninguno de sus `assert` cambie.
+
+    `sobre=False` deja el cuerpo pelado para quien lo quiera ejercer a propósito.
+    **Si la rama pelada de `interpretar` se endurece** —la otra mitad de M1, que
+    no se decide aquí: ver la respuesta del escritor de tests— este argumento es
+    el que señala a los casos que hay que revisar.
+
+    Lleva el cuerpo en las **dos** posiciones en que el sobre real lo trae
+    (`structured_output` y `result`), y **sin `modelUsage`** a propósito: sin
+    modelo reportado, la única versión posible es la que la invocación **pidió**,
+    que es la mitad del criterio de D15/CA15 que `test_cliente_proveedor.py`
+    test 4 y `test_salida_del_cli.py` test 3 asercian. Lo que pasa **con**
+    `modelUsage` —uno o varios modelos reportados— lo ejercen los tests que
+    construyen su propio sobre, que es donde se lee.
+
+    Un score fuera de rango, cuatro razones o un JSON roto son casos de PR-11, no
+    de este doble.
     """
-    return json.dumps({"score": score, "razones": list(razones)}, ensure_ascii=False)
+    cuerpo = {"score": score, "razones": list(razones)}
+    if not sobre:
+        return json.dumps(cuerpo, ensure_ascii=False)
+    return json.dumps(
+        SOBRE_DEL_CLI
+        | {"structured_output": cuerpo, "result": json.dumps(cuerpo, ensure_ascii=False)},
+        ensure_ascii=False,
+    )
 
 
 def cli_que_prohibe_llamadas() -> CLIDoblado:

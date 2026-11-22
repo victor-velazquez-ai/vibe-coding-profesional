@@ -34,6 +34,14 @@ aislamiento de CA1/D4 deja de ser solo sobre el candidato: la descripción que
 viaja es la de la vacante de la empresa del trabajo, la de Meridian no aparece en
 ninguna invocación, y los IDs cruzados siguen dando 404 en los dos sentidos.
 
+El **quinto** lo pide la ronda de revisión del paso (**I1**) y cierra el hueco que
+el cuarto deja abierto: el test 4 encola el `vacante_id` de la empresa del
+trabajo, así que el filtro por `empresa_id` de la lectura nueva se puede borrar y
+la suite sigue verde (mutación 4f·6 del cuerpo del PR, declarada en el docstring
+del método). El test 5 ejerce el filtro **directamente sobre el repositorio**, con
+el `vacante_id` de la otra empresa, que es el patrón que la suite ya usa para los
+demás métodos del punto único de acceso a datos (`test_aislamiento.py`).
+
 **Lo que no se decide aquí:** «vacante sin descripción → sin score con motivo» es
 el test 1 de **PR-11** (`SPEC.md` alcance 6), y el recálculo cuando la
 descripción cambia es **D23/CA9** (PR-21). Este archivo solo exige que el dato
@@ -48,11 +56,13 @@ import inspect
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.match.cola.ejecutor import pasadas
 from app.match.cola.trabajos import encolar
 from app.match.configuracion import IDIOMA_POR_OMISION
+from app.match.repositories.contexto import SinContexto
 from tests.dobles.cli import CLIDoblado, adaptador, payload_sintetico
 from tests.dobles.proveedor import ProveedorContado
 from tests.match.conftest import EmpresaDePrueba, Entrar, repo_de
@@ -309,3 +319,70 @@ async def test_la_descripcion_que_sale_es_la_de_la_empresa_del_trabajo_y_la_de_m
     al_reves = de_northstar.get(f"/vacantes/{meridian.vacante.id}")
     assert al_reves.status_code == 404, "Northstar recibió algo distinto de un 404 (CA1)"
     assert MARCA_DE_MERIDIAN not in al_reves.text
+
+
+# --- 5 · el filtro por empresa de la lectura nueva, ejercido ---------------
+
+
+def test_la_descripcion_de_una_vacante_de_otra_empresa_no_sale_del_repositorio(
+    sesion: Session, northstar: EmpresaDePrueba, meridian: EmpresaDePrueba
+) -> None:
+    """CA1, D4, F4 · el cerrojo multiempresa de la **primera** lectura que saca de
+    Criba un dato de la empresa (ronda de revisión de PR-09, I1).
+
+    La lectura nueva del punto único de acceso a datos —la que resuelve la
+    descripción de la vacante— filtra por el `empresa_id` **del contexto**. Lo que
+    hasta ahora no ejercía ningún test es ese filtro: el test 4 de este archivo y
+    el test 8 de `test_cliente_proveedor.py` encolan siempre el `vacante_id` de la
+    empresa del trabajo, así que con filtro o sin él reciben la misma descripción
+    (mutación 4f·6: borrarlo deja la suite verde). Un refactor que simplifique la
+    condición a «la vacante con ese id» pasa verde hoy, y el día que exista un
+    camino con un `vacante_id` ajeno —el recálculo de D23/CA9 en PR-21, un script
+    de re-puntuación como el de `docs/arquitectura.md` §5.4— manda la descripción
+    de Northstar dentro de una llamada de otra empresa. Eso no es un error de
+    programación: es el incidente de [03:03] y el requisito número uno del cliente
+    («ningún dato cruza entre empresas»).
+
+    Lo que se exige, y es el mismo patrón que la suite ya usa para los demás
+    métodos del repositorio (`repo.candidatos_de_vacante(meridian.vacante.id)` →
+    `SinContexto` en `test_aislamiento.py`):
+
+    - con la vacante **propia**, la descripción sembrada, tal cual (sobre
+      Northstar, que es la empresa con anexo firmado: que esta lectura mire o no
+      la activación de D7 es de PR-10 y aquí no se fija);
+    - con la vacante de **la otra empresa**, `SinContexto` — y en los dos
+      sentidos, porque «Meridian no ve a Northstar» y «Northstar no ve a
+      Meridian» son dos consultas distintas y la fixture de PR-03 no las hace
+      simétricas por sí sola;
+    - y **el error no cita el texto ajeno**: el mensaje del `SinContexto` acaba en
+      logs de operación y, por el bucle del ejecutor, en `match_trabajos.motivo`,
+      así que no puede llevar dentro lo que la empresa de al lado escribió (D15,
+      F12, D4).
+
+    Por qué `SinContexto` y no una cadena vacía, dicho donde se asercia: confundir
+    «no te toca» con «no tiene descripción» haría que un fallo de aislamiento se
+    viera igual que el «sin score por vacante sin descripción» de `SPEC.md`
+    alcance 6, que es el test 1 de PR-11.
+
+    Este test **puede nacer en verde**: es el cerrojo de un filtro que ya está
+    escrito, no un criterio pendiente. Su trabajo es ponerse rojo el día que ese
+    filtro se simplifique.
+    """
+    _descripciones(
+        sesion, (northstar, DESCRIPCION_DE_NORTHSTAR), (meridian, DESCRIPCION_DE_MERIDIAN)
+    )
+    de_northstar = repo_de(sesion, northstar)
+    de_meridian = repo_de(sesion, meridian)
+
+    assert de_northstar.descripcion_de_vacante(northstar.vacante.id) == DESCRIPCION_DE_NORTHSTAR
+
+    with pytest.raises(SinContexto) as cruzado:
+        de_northstar.descripcion_de_vacante(meridian.vacante.id)
+    assert MARCA_DE_MERIDIAN not in str(cruzado.value), (
+        "el error de aislamiento lleva dentro la descripción de la otra empresa: ese mensaje "
+        "viaja al log de operación y a `match_trabajos.motivo` (D15, F12)"
+    )
+
+    with pytest.raises(SinContexto) as al_reves:
+        de_meridian.descripcion_de_vacante(northstar.vacante.id)
+    assert MARCA_DE_NORTHSTAR not in str(al_reves.value)
