@@ -96,9 +96,16 @@ SEGUNDOS_DE_TIMEOUT = 120
 # autenticación del CLI se queda donde está (en el entorno, nunca en `argv`).
 VARIABLES_DEL_ANFITRION = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT")
 
-# Las claves del sobre de `--output-format json`. Sirven para una cosa: distinguir
-# el sobre del CLI de un cuerpo pelado, porque el doble de los tests fija lo
-# segundo y el CLI real devuelve lo primero.
+# Las claves del sobre de `--output-format json`. Sirven para una cosa:
+# distinguir el sobre del CLI de un cuerpo pelado.
+#
+# **Y el cuerpo pelado ya no es «la forma del doble»** (R2·M1): el doble emite el
+# sobre por omisión desde la segunda ronda de revisión, que es lo que el CLI
+# devuelve **siempre** con esta bandera (medición 4b). Lo que queda recorriendo la
+# rama pelada son los tres casos de cerco sin sobre del test 4 de
+# `test_salida_del_cli.py`. Que la rama siga aquí es una decisión declarada en el
+# cuerpo del PR, no un descuido: endurecerla a «solo el sobre» rompe esos tres
+# casos, que son contrato ya escrito.
 CLAVES_DEL_SOBRE = ("is_error", "result", "structured_output", "modelUsage")
 
 CERCO = "```"
@@ -385,8 +392,12 @@ def _version_del_modelo(sobre: Mapping[str, object]) -> str:
 def interpretar(salida: str) -> RespuestaDelProveedor:
     """Lo que el proceso escribió → una respuesta del proveedor, o error tipado.
 
-    Acepta las dos formas que de verdad llegan: el **sobre** de
-    `--output-format json` del CLI y un **cuerpo pelado** con el score dentro.
+    Acepta dos formas, y **no son igual de reales** (R2·M1). El **sobre** de
+    `--output-format json` es la que producción recorre: la invocación pide esa
+    bandera siempre y con ella el CLI devuelve el sobre siempre. El **cuerpo
+    pelado** con el score dentro es la que le pasan los tres casos de cerco sin
+    sobre del test 4 de `test_salida_del_cli.py`; por qué no se endurece a «solo
+    el sobre» está en el cuerpo del PR y en `CLAVES_DEL_SOBRE`.
     """
     if not salida.strip():
         raise RespuestaInvalidaDelProveedor("el CLI del proveedor no escribió nada")
