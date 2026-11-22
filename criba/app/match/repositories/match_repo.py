@@ -160,11 +160,21 @@ class RepositorioDeMatch:
         El tercer dato del pedido al proveedor (`SPEC.md` alcance 2 y D13: «solo
         el texto del CV y la descripción de la vacante»), y la primera lectura de
         Match que saca de Criba un dato de la **empresa** y no del candidato
-        —decisión de Víctor del 22-nov-2026—. Por eso vive aquí y no en el
-        servicio: el `empresa_id` sale del contexto, nunca de un argumento (D4,
-        CA1, F4, regla (a) de PR-04). Un `select` suelto sobre `vacantes` sin ese
-        filtro manda la descripción de Northstar en la llamada de otra empresa, y
-        eso es el incidente de [03:03] y no un error de programación.
+        —decisión de Víctor del 22-nov-2026,
+        `docs/decisiones-propuestas/2026-11-22-proveedor-y-vacante.md` §2—. Por
+        eso vive aquí y no en el servicio: el `empresa_id` sale del contexto,
+        nunca de un argumento (D4, CA1, F4, regla (a) de PR-04). Un `select`
+        suelto sobre `vacantes` sin ese filtro manda la descripción de Northstar
+        en la llamada de otra empresa, y eso es el incidente de [03:03] y no un
+        error de programación.
+
+        **Y ese filtro no lo cubre ningún test**, dicho aquí porque es el sitio
+        donde se borra: quitarlo deja la suite verde (mutación 4f·6 del cuerpo
+        del PR). Los tests de aislamiento del paso pasan el `vacante_id` de la
+        empresa del trabajo, así que sin filtro reciben la misma descripción. El
+        caso que lo vería —el `vacante_id` de otra empresa llegando aquí— no
+        existe hoy: el `empresa_id` del contexto sale de la fila de la cola, que
+        trae las dos columnas juntas. Queda como hueco declarado.
 
         Una vacante que no es de la empresa del contexto es `SinContexto` y no una
         cadena vacía: confundir «no te toca» con «no tiene descripción» haría que

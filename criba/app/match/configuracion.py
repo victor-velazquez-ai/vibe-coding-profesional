@@ -50,7 +50,9 @@ VERDADEROS = frozenset({"1", "si", "sí", "true", "on"})
 # precio de tenerlo todo junto.
 #
 # El valor por omisión es el **MOCK**, que no sale del proceso, y es el único que
-# la CI corre (N4, decisión de Víctor del 22-nov-2026; `docs/arquitectura.md` §2).
+# la CI corre (N4 acotada, decisión de Víctor del 22-nov-2026, registrada en
+# `docs/decisiones-propuestas/2026-11-22-proveedor-y-vacante.md` §1;
+# `docs/arquitectura.md` §2).
 # Es la misma forma que la activación por empresa (R4·I1) y el interruptor global
 # (R6·I5): un entorno nuevo, o un despliegue al que se le olvidó la variable, nace
 # en el modo que no puede sacar un CV de Criba.
