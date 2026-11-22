@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from fastapi.testclient import TestClient
 
 from tests.conftest import login
@@ -59,10 +61,10 @@ def test_create_candidate_assigned_to_recruiter_company(client: TestClient) -> N
     assert "Nueva Candidata" in names
 
 
-def test_created_at_es_la_hora_actual(client):
-    from datetime import datetime, timedelta
-    from zoneinfo import ZoneInfo
-
+def test_created_at_llega_con_zona_horaria(client: TestClient) -> None:
+    """La API debe devolver created_at con offset explícito (timestamptz),
+    no un valor naive cuyo significado depende del TimeZone de la sesión
+    de Postgres que lo escribió."""
     token = login(client, "sofia", "sofia1234")
     response = client.post(
         "/candidates",
@@ -70,6 +72,33 @@ def test_created_at_es_la_hora_actual(client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 201
+
     creado = datetime.fromisoformat(response.json()["created_at"])
-    ahora = datetime.now(ZoneInfo("America/Chicago")).replace(tzinfo=None)
-    assert abs(ahora - creado) < timedelta(minutes=2)
+    assert creado.tzinfo is not None, (
+        "created_at llegó sin zona horaria: es ambiguo sin saber el TimeZone "
+        "de la sesión que lo escribió"
+    )
+
+
+def test_created_at_es_el_instante_real_en_utc(client: TestClient) -> None:
+    """created_at debe ser un instante real: comparado en UTC contra la hora
+    actual, sin asumir ninguna zona horaria de sesión (p.ej. America/Chicago)."""
+    token = login(client, "sofia", "sofia1234")
+    antes = datetime.now(UTC)
+    response = client.post(
+        "/candidates",
+        json={"name": "Luis Peña", "position": "Despachador", "stage": "Primer contacto"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    despues = datetime.now(UTC)
+    assert response.status_code == 201
+
+    creado = datetime.fromisoformat(response.json()["created_at"])
+    assert creado.tzinfo is not None, "sin offset no se puede comparar contra UTC de forma segura"
+    creado_utc = creado.astimezone(UTC)
+
+    margen = timedelta(seconds=5)
+    assert antes - margen <= creado_utc <= despues + margen, (
+        f"created_at ({creado_utc.isoformat()}) no corresponde al instante real "
+        f"entre {antes.isoformat()} y {despues.isoformat()}"
+    )
