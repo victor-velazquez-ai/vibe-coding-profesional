@@ -1,0 +1,1 @@
+Agrega a los candidatos un campo opcional `salario_pedido` (entero, en dólares al año): se guarda al crear y se devuelve al listar.
