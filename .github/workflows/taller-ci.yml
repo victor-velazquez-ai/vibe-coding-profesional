@@ -1,0 +1,53 @@
+# CI mínima del taller (S3). Corre en cada PR: lo mismo que `uv run poe check`,
+# pero contra un Postgres limpio en UTC, como en cualquier servidor.
+name: taller-ci
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: poe check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: taller
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: taller
+          POSTGRES_PASSWORD: solo-para-ci
+          POSTGRES_DB: taller
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U taller -d taller"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      POSTGRES_USER: taller
+      POSTGRES_PASSWORD: solo-para-ci
+      POSTGRES_DB: taller
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0
+      - name: Dependencias exactas (uv.lock)
+        run: uv sync --locked
+      - name: poe check (lint, formato, tipos y tests)
+        run: uv run poe check
+
+  commits:
+    name: commits separados
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Ningún commit mezcla tests/ con app/
+        run: python3 .github/scripts/commits_separados.py "origin/${{ github.base_ref }}..HEAD"
