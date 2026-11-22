@@ -15,6 +15,16 @@ suite, explícitamente** (R6·I5). Está apagado por omisión, así que sin esta
 toda la suite de Match sería no-op. El test que lo quiere apagado usa la fixture
 `apagar_match` de `tests/match/conftest.py`.
 
+Y una cuarta, que PR-09 añade y la ronda de revisión del paso corrigió de alcance
+(M4): **ningún test de la suite puede lanzar el CLI del proveedor de verdad**, y
+«ningún» incluye `tests/e2e`, que corre con la app real y llama al bucle del
+ejecutor. Son dos líneas y las dos viven aquí porque el alcance es la suite
+entera, no `tests/match`: el **modo de proveedor fijado al MOCK** —igual que el
+interruptor global, para que la suite no dependa de lo que alguien haya exportado
+en su terminal— y la fixture `autouse` `ningun_cli_de_verdad`, que deja la costura
+del subproceso doblada y prohibida por omisión. Su detector es
+`tests/test_guardia_del_cli.py`.
+
 Y un orden, que PR-07 añade: **el E2E de Playwright corre al final**
 (`pytest_collection_modifyitems`, con su razón escrita ahí mismo).
 """
@@ -23,6 +33,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from contextlib import suppress
 
 import pytest
 from fastapi import FastAPI
@@ -33,10 +44,17 @@ from sqlalchemy.orm import Session
 from app.configuracion import ajustes
 from app.db import crear_sesion
 from app.fabrica import crear_app
-from app.match.configuracion import VARIABLE_GLOBAL
+from app.match.configuracion import MODO_MOCK, VARIABLE_DE_MODO, VARIABLE_GLOBAL
 from app.migracion import aplicar_migraciones
+from tests.dobles.cli import NOMBRE_DE_LA_COSTURA, adaptador, cli_que_prohibe_llamadas
 
 os.environ[VARIABLE_GLOBAL] = "1"
+# **El MOCK, dicho por la suite y no heredado del entorno** (PR-09, N4, M4). Se
+# fija aquí y no en `tests/match/conftest.py` porque el bucle del ejecutor le
+# pregunta a `proveedor_configurado()` en cada pasada, y el E2E corre ese bucle:
+# con `CRIBA_MATCH_PROVEEDOR=claude_cli` exportada en la shell, el humo lanzaba el
+# CLI de verdad. Los tests que quieren otro modo lo piden con la fixture `modo`.
+os.environ[VARIABLE_DE_MODO] = MODO_MOCK
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -51,6 +69,31 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     de correr los tests dependería de que alguien lo recuerde.
     """
     items.sort(key=lambda item: "tests/e2e" in item.nodeid.replace("\\", "/"))
+
+
+@pytest.fixture(autouse=True)
+def ningun_cli_de_verdad(monkeypatch: pytest.MonkeyPatch) -> None:
+    """**Ningún test lanza el CLI del proveedor de verdad** (PR-09, N4).
+
+    Es `autouse` y vive en el `conftest` de la raíz a propósito: el olvido de un
+    doble en un test cualquiera no puede convertirse en un proceso `claude -p`
+    lanzado desde la suite —con un CV dentro—. Con el doble prohibitivo puesto por
+    omisión, ese olvido es un test rojo y no una llamada.
+
+    Estuvo en `tests/match/conftest.py` hasta la ronda de revisión de PR-09, que
+    señaló el alcance (M4): ahí no cubría `tests/e2e`, que levanta la app real y
+    corre el bucle del ejecutor, y el bucle pregunta por el proveedor configurado.
+
+    El `suppress` es lo que hace que esta fixture **no** sea un error de montaje
+    si la costura no existe o cambia de nombre; el precio es que el guardia
+    podría desaparecer en silencio, y por eso tiene un detector propio en
+    `tests/test_guardia_del_cli.py`.
+    """
+    with suppress(AssertionError):
+        puerta = adaptador()
+        monkeypatch.setattr(
+            puerta.modulo_de_la_costura, NOMBRE_DE_LA_COSTURA, cli_que_prohibe_llamadas()
+        )
 
 
 @pytest.fixture(scope="session")
