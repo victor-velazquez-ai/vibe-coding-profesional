@@ -6,3 +6,6 @@ __pycache__/
 .env
 .claude/estado/
 .claude/settings.local.json
+# Los informes del arnes de evals: salida de una ejecucion, no codigo. El
+# directorio se versiona (evals/resultados/.gitkeep); su contenido no.
+evals/resultados/*.json
