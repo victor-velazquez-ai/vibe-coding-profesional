@@ -154,6 +154,48 @@ class RepositorioDeMatch:
             )
         ).one_or_none()
 
+    def descripcion_de_vacante(self, vacante_id: int) -> str:
+        """La descripción de la vacante de **esta** empresa (PR-09, R?·hallazgo 1).
+
+        El tercer dato del pedido al proveedor (`SPEC.md` alcance 2 y D13: «solo
+        el texto del CV y la descripción de la vacante»), y la primera lectura de
+        Match que saca de Criba un dato de la **empresa** y no del candidato
+        —decisión de Víctor del 22-nov-2026,
+        `docs/decisiones-propuestas/2026-11-22-proveedor-y-vacante.md` §2—. Por
+        eso vive aquí y no en el servicio: el `empresa_id` sale del contexto,
+        nunca de un argumento (D4, CA1, F4, regla (a) de PR-04). Un `select`
+        suelto sobre `vacantes` sin ese filtro manda la descripción de Northstar
+        en la llamada de otra empresa, y eso es el incidente de [03:03] y no un
+        error de programación.
+
+        **Y ese filtro lo ejerce un test**, dicho aquí porque este es el sitio
+        donde se borra: el test 5 de `tests/match/test_descripcion_de_vacante.py`
+        llama a este método con el `vacante_id` de **la otra empresa**, en los dos
+        sentidos, y exige `SinContexto` sin que el mensaje cite el texto ajeno
+        (R2·I1). La mutación 4f·6 del cuerpo del PR —leer sin el filtro— pasa de
+        **0 rojos a 1**. Los tests de aislamiento del paso no lo veían: pasan el
+        `vacante_id` de la empresa del trabajo, así que con filtro o sin él
+        reciben la misma descripción. El camino con un `vacante_id` ajeno no
+        existe todavía —el `empresa_id` del contexto sale de la fila de la cola,
+        que trae las dos columnas juntas—, y para cuando exista (el recálculo de
+        D23/CA9 en PR-21, un script de re-puntuación) el cerrojo ya está puesto.
+
+        Una vacante que no es de la empresa del contexto es `SinContexto` y no una
+        cadena vacía: confundir «no te toca» con «no tiene descripción» haría que
+        un fallo de aislamiento se viera igual que el «sin score por vacante sin
+        descripción» de `SPEC.md` alcance 6, que es de PR-11.
+        """
+        descripcion = self._bd.scalars(
+            select(Vacante.descripcion).where(
+                Vacante.id == vacante_id, Vacante.empresa_id == self.empresa_id
+            )
+        ).one_or_none()
+        if descripcion is None:
+            raise SinContexto(
+                f"Vacante {vacante_id} no es de la empresa {self.empresa_id} del contexto."
+            )
+        return descripcion
+
     def trabajo_por_clave(self, clave_idempotencia: str) -> TrabajoDeMatch | None:
         """El trabajo de esta empresa con esa clave, si ya existe (ADR-001 §D3).
 

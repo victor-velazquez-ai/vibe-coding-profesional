@@ -31,6 +31,12 @@ from app.match.routers.vacante import PREFIJO
 from app.plataforma.modelos import Candidato, Empresa, Postulacion, Rol, Usuario, Vacante
 from app.plataforma.seguridad import hash_contrasena
 from app.plataforma.sesion import ContextoEmpresa
+from tests.dobles.cli import (
+    NOMBRE_DE_LA_COSTURA,
+    CLIDoblado,
+    adaptador,
+    salida_del_cli,
+)
 from tests.dobles.proveedor import RAZONES, ProveedorContado
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -249,6 +255,57 @@ def _caminos(rutas: Iterable[object]) -> Iterator[str]:
         camino = getattr(ruta, "path", None)
         if isinstance(camino, str):
             yield camino
+
+
+# --- PR-09 · el cliente real del proveedor ----------------------------------
+
+
+# La fixture `autouse` que deja la costura del subproceso doblada y prohibida
+# —`ningun_cli_de_verdad`— **se movió a `tests/conftest.py`** en la ronda de
+# revisión de PR-09 (M4): aquí solo cubría `tests/match`, y el alcance que su
+# propio docstring declara es la suite entera (`tests/e2e` levanta la app real y
+# corre el bucle del ejecutor, que pregunta por el proveedor configurado). Su
+# detector, también fuera de este directorio, es `tests/test_guardia_del_cli.py`.
+
+
+@pytest.fixture
+def cli(monkeypatch: pytest.MonkeyPatch) -> Callable[..., CLIDoblado]:
+    """Instala el doble del subproceso sobre la costura del adaptador y lo devuelve.
+
+    Devuelve un **instalador** y no el doble ya puesto porque resolver la costura
+    es lo que falla mientras PR-09 no existe: así el `assert` que lo dice ocurre
+    dentro del cuerpo del test, que es donde se lee.
+    """
+
+    def instalar(doble: CLIDoblado | None = None) -> CLIDoblado:
+        elegido = doble if doble is not None else CLIDoblado(salida=salida_del_cli())
+        monkeypatch.setattr(
+            adaptador().modulo_de_la_costura, NOMBRE_DE_LA_COSTURA, elegido, raising=True
+        )
+        return elegido
+
+    return instalar
+
+
+@pytest.fixture
+def modo(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[..., None]]:
+    """Fija el modo de proveedor por variable de entorno; sin argumentos, el de omisión.
+
+    Igual que `activacion` en `test_activacion_por_empresa.py`: el **valor por
+    omisión** es un caso que hay que poder ejercer, y es el que la CI usa (N4: el
+    MOCK sigue siendo el modo por omisión y el único que la CI corre).
+    """
+
+    def fijar(valor: str | None = None) -> None:
+        variable = adaptador().variable_de_modo
+        if valor is None:
+            monkeypatch.delenv(variable, raising=False)
+        else:
+            monkeypatch.setenv(variable, valor)
+        ajustes_match.cache_clear()
+
+    yield fijar
+    ajustes_match.cache_clear()
 
 
 def repo_de(sesion: Session, empresa: EmpresaDePrueba) -> RepositorioDeMatch:

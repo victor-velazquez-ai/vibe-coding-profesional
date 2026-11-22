@@ -12,6 +12,12 @@ La versión mínima de la Etapa 0, con lo que **no** hace dicho en voz alta:
 - **no construye el prompt**: hoy no hay prompt, y de ahí sale el hueco de la
   clave de idempotencia que `cola/trabajos.py` declara.
 
+- **no elige qué entra en el pedido por su cuenta**: son las dos entradas de
+  `SPEC.md` alcance 2 y D13 —el texto del CV y la descripción de la vacante— y
+  las dos salen del trabajo y del repositorio, no de un argumento del llamador
+  (decisión de Víctor del 22-nov-2026 sobre el hallazgo 1 de PR-09,
+  `docs/decisiones-propuestas/2026-11-22-proveedor-y-vacante.md` §2).
+
 Lo que sí hace, y es de este paso: **CA13 en el estado**. O hay score, o hay
 «sin score» con su motivo visible; nunca un cero en lugar de un score. Un
 candidato sin texto de CV es el caso corriente de esa segunda mitad (F21) y la
@@ -44,20 +50,40 @@ class MatchService:
         if candidato is None or not candidato.tiene_cv:
             return self._guardar(trabajo, None, (), motivo=SIN_TEXTO_DE_CV)
 
-        respuesta = await self._del_proveedor(candidato, trabajo.idioma)
+        respuesta = await self._del_proveedor(candidato, trabajo)
         return self._guardar(
             trabajo, respuesta.score, respuesta.razones, motivo=respuesta.motivo_sin_score
         )
 
-    async def _del_proveedor(self, candidato: Candidato, idioma: str) -> RespuestaDelProveedor:
+    async def _del_proveedor(
+        self, candidato: Candidato, trabajo: TrabajoDeMatch
+    ) -> RespuestaDelProveedor:
         """La **única** llamada al proveedor que hay en Match, y el único sitio
-        donde se construye el cuerpo que sale.
+        donde se construye el pedido que sale.
 
         Está extraída del cuerpo de `puntuar` a propósito (PR-08, `PLAN.md` §4):
         así la frontera —qué se le puede pasar al cliente— se cambia en un sitio y
         se lee en una línea, en vez de quedar en medio de la lógica de CA13.
+
+        **El pedido son tres datos y no dos** desde la decisión de Víctor del
+        22-nov-2026 (`docs/decisiones-propuestas/2026-11-22-proveedor-y-vacante.md`):
+        el cuerpo pseudonimizado del candidato, el idioma y la **descripción de la
+        vacante**, que es el par (candidato, vacante) de `SPEC.md` alcance 1 y las
+        dos entradas del alcance 2 y D13. Los tres salen del **trabajo** y del
+        repositorio con su contexto, no de un argumento del llamador: el
+        `candidato_id`, el `vacante_id` y el idioma son columnas de la fila de la
+        cola (F5, `docs/arquitectura.md` §5.3, ADR-001 §Decisión 1), y aquí no hay
+        cookie que revalidar.
+
+        La descripción **no entra en el payload** (CA2 sigue siendo sobre los seis
+        datos del candidato) y este servicio no decide nada si está vacía: eso es
+        «sin score con motivo» del alcance 6 y lo decide **PR-11**.
         """
-        return await self._proveedor.puntuar(pseudonimizar(candidato), idioma)
+        return await self._proveedor.puntuar(
+            pseudonimizar(candidato),
+            trabajo.idioma,
+            self._repo.descripcion_de_vacante(trabajo.vacante_id),
+        )
 
     def _guardar(
         self,
