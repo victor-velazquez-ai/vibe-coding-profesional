@@ -13,6 +13,11 @@ dependencies = [
     # pg8000 es Python puro, habla el mismo protocolo y no carga librerías nativas.
     "pg8000>=1.31",
     "jinja2>=3.1",
+    # Explícita desde PR-09 aunque ya venía con FastAPI: el adaptador del
+    # proveedor valida con ella la **forma** de la respuesta del modelo y genera
+    # de ahí el `--json-schema` que le pide al CLI. Un import directo que vive de
+    # una dependencia transitiva se rompe el día que FastAPI cambie la suya.
+    "pydantic>=2.9",
     "itsdangerous>=2.2",
     "python-multipart>=0.0.20",
 ]
