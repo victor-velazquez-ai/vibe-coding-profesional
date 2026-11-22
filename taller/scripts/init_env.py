@@ -1,6 +1,7 @@
 """Crea un `.env` local a partir de `.env.example`, con secretos generados.
 
-No sobreescribe un `.env` existente.
+Si `.env` ya existe, no toca lo que tiene: solo agrega las claves generadas que le falten
+(por ejemplo, las contraseñas de los roles del agente que llegaron en la sección 3).
 """
 
 import secrets
@@ -19,13 +20,32 @@ GENERATED = {
 }
 
 
+def _keys(text: str) -> set[str]:
+    return {line.partition("=")[0].strip() for line in text.splitlines() if "=" in line}
+
+
+def completar(existente: str) -> list[str]:
+    """Líneas `CLAVE=valor` para las claves generadas que faltan en un `.env` existente."""
+    tiene = _keys(existente)
+    return [f"{k}={gen()}" for k, gen in GENERATED.items() if k not in tiene]
+
+
 def main() -> int:
-    if TARGET.exists():
-        print(f".env ya existe en {TARGET}: no se toca.")
-        return 0
     if not EXAMPLE.exists():
         print(f"No encuentro {EXAMPLE}", file=sys.stderr)
         return 1
+
+    if TARGET.exists():
+        actual = TARGET.read_text(encoding="utf-8")
+        nuevas = completar(actual)
+        if not nuevas:
+            print(f".env ya existe en {TARGET} y está completo: no se toca.")
+            return 0
+        sep = "" if actual.endswith("\n") else "\n"
+        TARGET.write_text(actual + sep + "\n".join(nuevas) + "\n", encoding="utf-8")
+        nombres = ", ".join(n.partition("=")[0] for n in nuevas)
+        print(f".env ya existía: le agregué {nombres}. Lo demás no se tocó.")
+        return 0
 
     lines = []
     for line in EXAMPLE.read_text(encoding="utf-8").splitlines():
@@ -35,7 +55,7 @@ def main() -> int:
         lines.append(line)
 
     TARGET.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f".env creado en {TARGET} con SECRET_KEY y POSTGRES_PASSWORD aleatorios.")
+    print(f".env creado en {TARGET} con secretos aleatorios.")
     print("Si ya tenias el contenedor creado, recrealo: uv run poe db:stop && uv run poe db")
     return 0
 
