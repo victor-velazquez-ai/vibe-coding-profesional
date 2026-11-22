@@ -165,9 +165,32 @@ def columnas_de(sesion: Session, vista: str) -> list[str]:
 
 
 def definicion_de(sesion: Session, vista: str) -> str:
-    """El SQL de la vista, para mirar **lo que lee** y no solo lo que expone."""
-    consulta = text("SELECT pg_get_viewdef(:nombre::regclass, true)")
-    return str(sesion.scalar(consulta, {"nombre": f"{ESQUEMA}.{vista}"}))
+    """El SQL de la vista, para mirar **lo que lee** y no solo lo que expone.
+
+    La relación se resuelve con el **mismo** par `:esquema`/`:vista` sobre
+    `pg_class` que `relaciones_de_metricas` y `columnas_de`, y no con un
+    `:nombre::regclass`: en SQLAlchemy `::` **no** deja ver el parámetro —su
+    detector es `(?<![:\\w\\x5c]):(\\w+)(?![:\\w])` y el `(?![:\\w])` descarta
+    `:nombre` cuando le sigue `:`—, así que el texto salía literal y Postgres lo
+    rechazaba con `42601` antes de mirar qué vista era. Con el `JOIN` hay una
+    sola forma de nombrar una relación en este archivo y ninguna depende de
+    `search_path` ni del entrecomillado de un nombre calificado a mano.
+
+    El `assert` es la otra mitad: `pg_get_viewdef` de algo que no existe da
+    `NULL`, y un `str(None)` se colaría como definición sin datos del candidato
+    —el criterio de privacidad aprobaría **sin haber leído nada**—.
+    """
+    consulta = text(
+        "SELECT pg_get_viewdef(c.oid, true) FROM pg_class c "
+        "JOIN pg_namespace n ON n.oid = c.relnamespace "
+        "WHERE n.nspname = :esquema AND c.relname = :vista"
+    )
+    definicion = sesion.scalar(consulta, {"esquema": ESQUEMA, "vista": vista})
+    assert definicion is not None, (
+        f"no se pudo leer la definición de {ESQUEMA}.{vista}: no existe como vista. "
+        "La crea la migración nueva del staging."
+    )
+    return str(definicion)
 
 
 def exigir_la_vista(sesion: Session, vista: str) -> None:
