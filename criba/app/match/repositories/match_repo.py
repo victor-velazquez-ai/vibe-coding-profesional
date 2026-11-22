@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.match.configuracion import IDIOMA_POR_OMISION
+from app.match.configuracion import IDIOMA_POR_OMISION, ajustes_match
 from app.match.repositories.contexto import (
     ContextoDeEmpresa,
     ContextoDeSistema,
@@ -27,7 +27,7 @@ from app.match.repositories.contexto import (
     SinContexto,
 )
 from app.match.repositories.modelos import GastoDelMes, ScoreDeMatch, TrabajoDeMatch
-from app.plataforma.modelos import Candidato, Postulacion, Vacante
+from app.plataforma.modelos import Candidato, Empresa, Postulacion, Vacante
 
 # La enumeración de I1 **en código**: cada operación de sistema y el único método
 # que la habilita. Una cuarta entrada aquí es una cuarta línea en el diff.
@@ -56,6 +56,37 @@ class RepositorioDeMatch:
     @property
     def empresa_id(self) -> int:
         return self._ctx.empresa_id
+
+    # --- D7 y CA3: la activación de la empresa del contexto ----------------
+
+    def empresa_activada(self) -> bool:
+        """«Match activado **y** anexo de subprocesador firmado» para la empresa
+        del contexto (D7, CA3, PLAN.md PR-10).
+
+        Vive **aquí y en ningún otro sitio** (`docs/arquitectura.md` §4 y §5.3:
+        «la comprobación de D7 debe vivir en el mismo punto de acceso a datos, no
+        en el router»). Quien decide es **una** función y la llaman los tres
+        caminos que pueden violar CA3, cada uno con su contexto:
+
+        - `encolar`, antes del `INSERT` —contexto «desde la vacante»—, porque CA3
+          prohíbe «ningún registro de Match» y no solo «ninguna llamada» (R2·M2);
+        - el bucle del ejecutor, al tomar la fila —contexto «desde el trabajo»—,
+          que es el camino **sin cookie** de F5 y §5.3: la fila puede estar en la
+          cola de antes, y ahí no hay sesión que revalidar;
+        - la vista de vacante (`services/listado.py`), que es la mitad de CA3 que
+          Meridian ve el 15-ene.
+
+        El `slug` **no es un argumento**: sale de la fila de la empresa del
+        contexto, por la misma razón que el `empresa_id` (PR-04, D4). Un `slug` de
+        llamador es el que el siguiente confunde, y confundirlo aquí es emitir una
+        llamada por una empresa sin anexo firmado (F5, severidad 5).
+
+        Es un estado que hay que **encender a propósito**: con la configuración en
+        su valor por omisión no hay ninguna empresa activada (R4·I1), así que esto
+        devuelve `False` para las 40.
+        """
+        empresa = self._bd.get(Empresa, self.empresa_id)
+        return empresa is not None and ajustes_match().match_activado(empresa.slug)
 
     # --- lectura -----------------------------------------------------------
 
