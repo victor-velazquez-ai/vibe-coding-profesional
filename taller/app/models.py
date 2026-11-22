@@ -1,4 +1,6 @@
-from sqlalchemy import ForeignKey, String
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -34,5 +36,6 @@ class Candidate(Base):
     stage: Mapped[str] = mapped_column(String)
     notes: Mapped[str] = mapped_column(String, default="")
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     company: Mapped[Company] = relationship(back_populates="candidates")

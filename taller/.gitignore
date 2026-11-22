@@ -8,3 +8,16 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Secretos y configuracion local
+.env
+
+# Caches de herramientas
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Artefactos de ejecucion local
+logs/
+.run/
+*.db
