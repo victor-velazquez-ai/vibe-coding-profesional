@@ -139,6 +139,14 @@ permiso sobre `metricas` lo da la migración `0002_metricas_staging.py`, condici
 a que el rol exista. La contraseña de arriba es un valor de una máquina local; en
 producción sale del gestor de secretos (F19).
 
+**Para tu agente** (una sesión `claude -p` no puede aceptar el permiso que pide `docker`):
+
+```bash
+uv run --env-file staging/staging.env python staging/metricas.py "SELECT * FROM metricas.trabajos_por_estado ORDER BY dia DESC"
+```
+
+Misma regla: una transacción de solo lectura con el rol `agente_metricas`. Si la consulta toca una tabla, Postgres responde «permission denied».
+
 ### Pedirle hipótesis a tu agente
 
 Cuando el síntoma no es obvio, el prompt es este, literal:
