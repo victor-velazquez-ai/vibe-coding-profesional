@@ -89,10 +89,10 @@ EJECUTABLE = "claude"
 MODELO = "claude-haiku-4-5-20251001"
 
 # Por **llamada**, no por mes. El techo mensual de D12 es de toda la plataforma y
-# lo cuenta PR-13; esto acota la llamada suelta que se desmadra. 0,05 USD es ~10
-# veces lo que cuesta puntuar un CV con este modelo, así que no recorta una
-# llamada legítima: los ~680 scores de la demo (§0, punto 1) caben en 34 USD
-# incluso al tope. Y con el tope alcanzado el CLI **no** devuelve JSON truncado:
+# lo cuenta PR-13; esto acota la llamada suelta que se desmadra. 0,05 USD son ~6
+# veces lo medido (0,0082 USD por CV sintético, con este modelo y el sobre del
+# CLI reportándolo: ver el cuerpo del PR), así que no recorta una llamada
+# legítima. Y con el tope alcanzado el CLI **no** devuelve JSON truncado:
 # devuelve un error explícito o ningún `result`, que es un error tipado de aquí y
 # nunca un score (F7 queda fuera: pregunta abierta 1 de `docs/fallas.md`).
 TOPE_POR_LLAMADA_USD = "0.05"
@@ -225,8 +225,17 @@ def instrucciones(idioma: str) -> str:
 
 
 def _esquema() -> str:
-    """El `--json-schema` que se le pide al CLI, generado del propio modelo."""
-    return json.dumps(RespuestaDelModelo.model_json_schema(), ensure_ascii=False)
+    """El `--json-schema` que se le pide al CLI, generado del propio modelo.
+
+    Sin `title` ni `description`: Pydantic los saca del nombre y del docstring de
+    la clase, que están escritos para quien revisa **este** repo —citan PR-11,
+    CA13 y la tabla de estados— y acabarían dentro de `argv` y delante del
+    modelo. El esquema que se le pide es la forma, no nuestra documentación.
+    """
+    esquema = RespuestaDelModelo.model_json_schema()
+    for nuestro in ("title", "description"):
+        esquema.pop(nuestro, None)
+    return json.dumps(esquema, ensure_ascii=False)
 
 
 def _argumentos(idioma: str) -> tuple[str, ...]:
