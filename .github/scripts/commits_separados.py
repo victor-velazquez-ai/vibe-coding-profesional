@@ -1,4 +1,5 @@
-"""CI: ningún commit mezcla tests/ con app/ en el mismo proyecto.
+"""CI: ningún commit mezcla tests/ con app/ en el mismo proyecto, y en el taller
+todo commit que toca tests/ lleva la línea "Rol: escritor-tests" (la que lee el hook Stop).
 
 Los tests los escribe el rol escritor-tests en su propio commit; el código, el constructor
 en otro. Si un commit toca los dos, alguien cambió el contrato y el código a la vez.
@@ -33,14 +34,18 @@ def main() -> int:
     malos = []
     for sha in git("rev-list", "--no-merges", rango).split():
         archivos = git("diff-tree", "--no-commit-id", "--name-only", "-r", sha).split()
+        mensaje = git("log", "-1", "--format=%B", sha)
+        if any(a.startswith("taller/tests/") for a in archivos) and "Rol: escritor-tests" not in mensaje:
+            titulo = mensaje.splitlines()[0] if mensaje.strip() else sha[:7]
+            malos.append(f"  {sha[:7]} {titulo}  (toca taller/tests/ sin la línea 'Rol: escritor-tests')")
         for proyecto, tipos in zonas(archivos).items():
             if tipos == {"tests", "app"}:
                 titulo = git("log", "-1", "--format=%s", sha).strip()
                 malos.append(f"  {sha[:7]} {titulo}  ({proyecto}: tests/ y app/ en el mismo commit)")
     if malos:
-        print("✗ Estos commits mezclan tests/ con app/:")
+        print("✗ Estos commits rompen la regla de los tests:")
         print("\n".join(malos))
-        print("Separa los tests (rol escritor-tests) del código en commits distintos.")
+        print("Separa los tests (rol escritor-tests) del código en commits distintos, y marca esos commits con 'Rol: escritor-tests'.")
         return 1
     print(f"✓ Ningún commit de {rango} mezcla tests/ con app/.")
     return 0
