@@ -20,13 +20,23 @@ from app.plataforma.modelos import Rol
 from app.plataforma.seguridad import firmar_sesion, leer_sesion
 
 ROLES_QUE_ESCRIBEN = frozenset({Rol.RECLUTADOR, Rol.ADMIN_EMPRESA})
+RUTA_POR_OMISION = "/vacantes"
 
 
 class NecesitaEntrar(Exception):
     """Sin sesión válida. El manejador de la app redirige a /entrar."""
 
-    def __init__(self, destino: str = "/vacantes") -> None:
+    def __init__(self, destino: str = RUTA_POR_OMISION) -> None:
         self.destino = destino
+
+
+def ruta_interna(destino: str) -> str:
+    """A dónde manda el `destino` de un formulario, o la ruta por omisión.
+
+    Un solo punto para la regla: quien construye una redirección con un valor que
+    viene de fuera pasa por aquí y no la escribe a mano.
+    """
+    return destino if destino.startswith("/") else RUTA_POR_OMISION
 
 
 @dataclass(frozen=True, slots=True)
