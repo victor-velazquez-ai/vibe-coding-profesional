@@ -34,7 +34,15 @@ from app.plataforma.sesion import ContextoEmpresa
 from tests.dobles.proveedor import RAZONES, ProveedorContado
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
-ARCHIVOS_DE_CV = ("enfermeria_es", "enfermeria_en")
+# Los dos últimos los añade PR-08: la guardia de «el archivo se declara
+# sintético» de PR-03 tiene que cubrir también las fixtures de PII, que son las
+# que más se parecen a un CV real (F12).
+ARCHIVOS_DE_CV = (
+    "enfermeria_es",
+    "enfermeria_en",
+    "pii_en_texto_libre_es",
+    "pii_en_texto_libre_en",
+)
 CONTRASENA = "prueba1234"
 DESCRIPCION = "Piso de medicina interna, turno nocturno. Licencia RN vigente en Texas."
 _ROLES = ((Rol.RECLUTADOR, "rec"), (Rol.ADMIN_EMPRESA, "adm"), (Rol.HIRING_MANAGER, "hm"))
