@@ -646,7 +646,13 @@ input[type="file"]::file-selector-button {
 
 /* ---------- 18. Responsive ----------------------------------------------- */
 @media (max-width: 75rem) {
-  .split { grid-template-columns: 1fr; }
+  /* CA19 · `minmax(0, 1fr)` y no `1fr`: con el mínimo en `auto`, la pista toma el
+     min-content de la tabla de candidatos (~840 px) y la página entera se iba con
+     ella en vez de dejarla desplazarse dentro de `.table-wrap`, que ya tiene su
+     propio `overflow-x: auto` (QA frontend BUG-3, D22, RI1, §19). Las dos pistas
+     de la regla de arriba ya tienen mínimo distinto de `auto`, así que el
+     desbordamiento solo aparecía en una columna. */
+  .split { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 56rem) {

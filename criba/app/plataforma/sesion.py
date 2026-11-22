@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from fastapi import Depends, HTTPException, Request, Response, status
 
@@ -21,6 +22,9 @@ from app.plataforma.seguridad import firmar_sesion, leer_sesion
 
 ROLES_QUE_ESCRIBEN = frozenset({Rol.RECLUTADOR, Rol.ADMIN_EMPRESA})
 RUTA_POR_OMISION = "/vacantes"
+# Lo que el navegador borra de una URL antes de resolverla (WHATWG URL, «URL
+# parsing»): se borra aquí también, o el filtro mira otra cadena que el navegador.
+SIN_SALTOS = str.maketrans("", "", "\t\r\n")
 
 
 class NecesitaEntrar(Exception):
@@ -35,8 +39,29 @@ def ruta_interna(destino: str) -> str:
 
     Un solo punto para la regla: quien construye una redirección con un valor que
     viene de fuera pasa por aquí y no la escribe a mano.
+
+    **Solo una ruta de Criba manda** (issue #16, `qa/TRIAGE.md`). `startswith("/")`
+    no bastaba: `//example.com` y `/\\example.com` empiezan por `/` y el navegador
+    los lee como *otro dominio*, así que una URL de Criba decidía a qué sitio iba
+    alguien después de un login legítimo. Lo que se descarta, y por qué:
+
+    - los caracteres que el navegador borra de una URL antes de resolverla
+      (tabulador, CR, LF): sin quitarlos, `/\\t/example.com` pasaría el filtro y
+      el navegador vería `//example.com`;
+    - la barra invertida, que el navegador normaliza a `/`: por eso se compara
+      sobre la forma normalizada y es esa la que se devuelve;
+    - cualquier cosa con esquema o autoridad (`http://…`, `//…`), y cualquier
+      cosa que no empiece por `/` (una ruta relativa que se resolvería contra la
+      ruta actual).
+
+    Un `destino` interno **se respeta tal cual**, también el de otra empresa: ahí
+    no hay lista blanca de ids, y la ruta muere en el 404 de siempre (CA1).
     """
-    return destino if destino.startswith("/") else RUTA_POR_OMISION
+    candidato = destino.translate(SIN_SALTOS).replace("\\", "/")
+    partes = urlsplit(candidato)
+    if partes.scheme or partes.netloc or not candidato.startswith("/"):
+        return RUTA_POR_OMISION
+    return RUTA_POR_OMISION if candidato.startswith("//") else candidato
 
 
 @dataclass(frozen=True, slots=True)
