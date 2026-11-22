@@ -96,10 +96,22 @@ SEGUNDOS_DE_TIMEOUT = 120
 # autenticación del CLI se queda donde está (en el entorno, nunca en `argv`).
 VARIABLES_DEL_ANFITRION = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT")
 
-# Las claves del sobre de `--output-format json`. Sirven para una cosa: distinguir
-# el sobre del CLI de un cuerpo pelado, porque el doble de los tests fija lo
-# segundo y el CLI real devuelve lo primero.
+# Las claves del sobre de `--output-format json`. Sirven para una cosa:
+# distinguir el sobre del CLI de un cuerpo pelado.
+#
+# **Y el cuerpo pelado ya no es «la forma del doble»** (R2·M1): el doble emite el
+# sobre por omisión desde la segunda ronda de revisión, que es lo que el CLI
+# devuelve **siempre** con esta bandera (medición 4b). Lo que queda recorriendo la
+# rama pelada son los tres casos de cerco sin sobre del test 4 de
+# `test_salida_del_cli.py`. Que la rama siga aquí es una decisión declarada en el
+# cuerpo del PR, no un descuido: endurecerla a «solo el sobre» rompe esos tres
+# casos, que son contrato ya escrito.
 CLAVES_DEL_SOBRE = ("is_error", "result", "structured_output", "modelUsage")
+
+# Con qué se unen las versiones cuando el CLI reporta **más de un modelo** en una
+# llamada (R2·M2). Sin espacio detrás de la coma a propósito: esta cadena viaja
+# dentro de una línea de log de `clave=valor` y de la fila de auditoría de PR-12.
+SEPARADOR_DE_MODELOS = ","
 
 CERCO = "```"
 
@@ -374,19 +386,42 @@ def _version_del_modelo(sobre: Mapping[str, object]) -> str:
 
     No el alias y no «la que pedimos por si acaso»: D15 y CA15 ponen esta cadena
     en cada fila de auditoría y en marzo tiene que ser verdad. Se pide la versión
-    fijada justo para que lo pedido y lo reportado coincidan; si el sobre reporta
-    exactamente un modelo, manda el reportado.
+    fijada justo para que lo pedido y lo reportado coincidan.
+
+    Las tres situaciones, y la del medio es la que la segunda ronda de revisión
+    corrigió (R2·M2):
+
+    - **un modelo reportado** → ese, aunque no sea el pedido. El día que el alias
+      resuelva a otra versión, o que el CLI caiga a su modelo por omisión, la
+      diferencia es exactamente lo que hay que registrar;
+    - **dos o más** → **todos**, en orden estable. Pasa de verdad: un modelo que
+      enruta a otro, o un reintento interno del CLI que cae a otro modelo, dejan
+      dos entradas en `modelUsage`. Antes se devolvía el **pedido**, que con dos
+      reportados distintos es una cadena que el CLI no reportó haber usado: una
+      fila de auditoría falsa, y una falsa es peor que una ausente porque nadie
+      puede distinguirla después. Y **no** se levanta un error tipado, que era la
+      otra salida razonable, porque el score sí se calculó: convertirlo en
+      «respuesta inválida» le costaría al candidato un paso por `pendiente` y la
+      llamada pagada dos veces (PR-14) por una respuesta que estaba bien, que es
+      el mismo criterio que `sin_cerco`. Qué hace la fila de auditoría con dos
+      versiones —dos filas, una cadena, una columna más— es de **PR-12**;
+    - **ninguno** → la pedida, que es la única fuente que queda y está en `argv`.
     """
     uso = sobre.get("modelUsage")
-    reportados = sorted(uso) if isinstance(uso, Mapping) else []
-    return reportados[0] if len(reportados) == 1 else MODELO
+    if not isinstance(uso, Mapping) or not uso:
+        return MODELO
+    return SEPARADOR_DE_MODELOS.join(sorted(str(modelo) for modelo in uso))
 
 
 def interpretar(salida: str) -> RespuestaDelProveedor:
     """Lo que el proceso escribió → una respuesta del proveedor, o error tipado.
 
-    Acepta las dos formas que de verdad llegan: el **sobre** de
-    `--output-format json` del CLI y un **cuerpo pelado** con el score dentro.
+    Acepta dos formas, y **no son igual de reales** (R2·M1). El **sobre** de
+    `--output-format json` es la que producción recorre: la invocación pide esa
+    bandera siempre y con ella el CLI devuelve el sobre siempre. El **cuerpo
+    pelado** con el score dentro es la que le pasan los tres casos de cerco sin
+    sobre del test 4 de `test_salida_del_cli.py`; por qué no se endurece a «solo
+    el sobre» está en el cuerpo del PR y en `CLAVES_DEL_SOBRE`.
     """
     if not salida.strip():
         raise RespuestaInvalidaDelProveedor("el CLI del proveedor no escribió nada")

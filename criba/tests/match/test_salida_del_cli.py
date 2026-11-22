@@ -22,6 +22,19 @@ Qué criterio sostiene cada test, porque ninguno es sobre «formas raras de JSON
   caracteres, y eso es coste de reintento (PR-14) y un trabajo en `error` por una
   respuesta que estaba bien.
 
+La **segunda** ronda de revisión del paso añade dos tests más a este archivo, y
+los dos son sobre la misma pieza:
+
+- **M2** — `modelUsage` con **dos o más** modelos reportados. Con uno manda el
+  reportado (test 3); con dos, hoy manda el **pedido**, que es una versión que el
+  CLI no reportó haber usado. Es el test 5, y no elige entre las dos salidas
+  razonables: solo prohíbe la que D15 no permite;
+- **la premisa de todo el archivo** — que la invocación **pida** la salida
+  estructurada. Es el test 6. Sin esa bandera no hay sobre, y entonces ni
+  `is_error`, ni `modelUsage`, ni `structured_output` existen: los cinco tests de
+  arriba hablarían de una forma que el CLI no devuelve. Es también lo que sostiene
+  la forma del doble, que desde M1 emite el sobre por omisión.
+
 Lo que **no** se decide aquí, a propósito: si el score está en 0-100, si las
 razones son tres y si están en el idioma pedido. Las tres son de **PR-11**, y su
 tabla de estados reparte por causa. Aquí solo se separa «esto es una respuesta»
@@ -34,7 +47,8 @@ Ningún test de este archivo lanza el CLI de verdad.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from contextlib import suppress
 
 import pytest
 
@@ -54,6 +68,17 @@ CERCO = "```"
 # que el CLI caiga a su modelo por omisión— la fila de auditoría de CA15 diría
 # una cosa y la llamada habría sido otra.
 MODELO_REPORTADO = "claude-haiku-7-7-20270315"
+
+# Y un segundo modelo reportado en la misma llamada, que es el caso de M2. Pasa
+# de verdad: un modelo que enruta a otro, o un reintento interno del CLI que cae
+# a un modelo distinto, dejan **dos** entradas en `modelUsage`.
+OTRO_MODELO_REPORTADO = "claude-sonnet-9-9-20270101"
+
+# Las formas conocidas de pedir la salida estructurada. Se acepta cualquiera —la
+# bandera es de la herramienta y una lista de nombres envejece (F34)— y el test
+# falla nombrando la propiedad, igual que en `test_invocacion_endurecida.py`.
+FORMATOS_DE_SALIDA = ("--output-format", "--output_format")
+FORMATOS_ESTRUCTURADOS = frozenset({"json", "stream-json", "json-stream"})
 
 
 def cuerpo(score: int = SCORE_DEL_CLI, razones: tuple[str, ...] = RAZONES_DEL_CLI) -> dict:
@@ -284,3 +309,129 @@ async def test_un_cerco_de_bloque_de_codigo_no_convierte_una_respuesta_valida_en
         "caracteres de formato"
     )
     assert tuple(respuesta.razones) == RAZONES_DEL_CLI
+
+
+# --- 5 · dos modelos reportados: la versión sigue teniendo que ser verdad ----
+
+
+async def test_con_dos_modelos_reportados_la_version_no_es_una_que_el_cli_no_reporto(
+    cli: Callable[..., CLIDoblado],
+) -> None:
+    """D15 y CA15 · «en marzo tiene que ser verdad», también con `modelUsage` de dos.
+
+    El hueco que la ronda de revisión del paso llama **M2**. El test 3 defiende la
+    regla con **un** modelo reportado: manda el reportado sobre el pedido. Con
+    **dos o más**, hoy esa regla se invierte en silencio y la versión que viaja
+    hacia la fila de auditoría de PR-12 es la que la invocación **pidió**, que en
+    este caso el CLI no reportó haber usado. La medición 4c del cuerpo del PR lo
+    dice con su propia salida: «dos modelos reportados → modelo=
+    claude-haiku-4-5-20251001», el pedido.
+
+    No es un caso de laboratorio: un modelo que enruta a otro, o un reintento
+    interno del CLI que cae a un modelo distinto, dejan dos entradas en
+    `modelUsage`. Y lo que se guarda es la única cosa que la auditoría de marzo
+    tiene para decir con qué se calculó un score; una cadena que nadie reportó es
+    una fila de auditoría falsa, que es peor que una fila ausente.
+
+    **Lo que este test NO elige**, porque `PLAN.md` no lo elige y el escritor de
+    tests no adivina (es el mismo patrón que `_o_el_error` en
+    `test_cliente_proveedor.py` con el modo desconocido): si el adaptador debe
+    levantar un **error tipado** —y que PR-11 lo trate como causa transitoria— o
+    **registrar lo que de verdad se usó** (uno de los dos, o los dos). Las dos son
+    salidas razonables y la decisión es de quien lleva el cuerpo del PR, con PR-12
+    detrás. Lo único que se exige es lo que D15 no deja negociar: que la versión
+    que sale de aquí **no sea una que el CLI no reportó**.
+    """
+    puerta = adaptador()
+    reportados = (MODELO_REPORTADO, OTRO_MODELO_REPORTADO)
+    doble = cli(
+        CLIDoblado(
+            salida=sobre(
+                structured_output=cuerpo(),
+                modelUsage={
+                    MODELO_REPORTADO: {"inputTokens": 1200, "outputTokens": 90},
+                    OTRO_MODELO_REPORTADO: {"inputTokens": 40, "outputTokens": 12},
+                },
+            )
+        )
+    )
+
+    # `suppress` y no `pytest.raises`: el **error tipado** es una de las dos
+    # salidas razonables de este caso, y PR-11 es quien lo clasifica. Lo que no se
+    # permite es la tercera, que es la de hoy: seguir adelante con una versión que
+    # nadie reportó.
+    respuesta = None
+    with suppress(puerta.error):
+        respuesta = await puerta.real().puntuar(payload_sintetico(), IDIOMA_POR_OMISION)
+
+    en_argv = sorted(modelo for modelo in reportados if modelo in doble.ultima.linea)
+    assert en_argv == [], (
+        f"la fixture no está probando nada: {en_argv} es a la vez reportado y pedido, así que "
+        "«manda el reportado» y «manda el pedido» darían el mismo resultado"
+    )
+    if respuesta is None:
+        return
+
+    assert respuesta.score == SCORE_DEL_CLI, (
+        "con dos modelos reportados se perdió el score del cuerpo: el candidato acaba en "
+        "pendiente por una clave del sobre que no es la respuesta (CA13)"
+    )
+    assert any(modelo in respuesta.version_modelo for modelo in reportados), (
+        f"el adaptador devuelve {respuesta.version_modelo!r} y el CLI reportó haber usado "
+        f"{list(reportados)}: la versión que va a la fila de auditoría de D15/CA15 es una que "
+        "nadie reportó. Vale cualquiera de las dos salidas —un error tipado, o registrar el o "
+        "los modelos reportados—, pero no la versión pedida cuando no es ninguna de las usadas"
+    )
+
+
+# --- 6 · la premisa del archivo: el sobre se pide --------------------------
+
+
+def _formato_pedido(argumentos: Sequence[str]) -> str | None:
+    """El valor de la bandera de formato de salida, en sus dos formas (`--x v`, `--x=v`)."""
+    for indice, argumento in enumerate(argumentos):
+        for bandera in FORMATOS_DE_SALIDA:
+            if argumento == bandera and indice + 1 < len(argumentos):
+                return argumentos[indice + 1]
+            if argumento.startswith(f"{bandera}="):
+                return argumento.split("=", 1)[1]
+    return None
+
+
+async def test_el_pedido_declara_el_formato_de_salida_del_que_depende_todo_el_paso(
+    cli: Callable[..., CLIDoblado],
+) -> None:
+    """N4, D15/CA15 y CA13 · el sobre no se supone: se pide.
+
+    Es la **premisa** de este archivo, y hasta la ronda de revisión del paso no la
+    aserciaba nadie. Todo lo demás —que el score salga de `structured_output` o de
+    `result`, que `is_error` no acabe en un cero, que la versión de modelo salga de
+    `modelUsage`— solo llega si la invocación pide la salida estructurada. Sin esa
+    bandera el CLI escribe **texto suelto**, y entonces: no hay `is_error` que
+    mirar (un error del proveedor se lee como respuesta del modelo), no hay
+    `modelUsage` (la versión de la fila de auditoría pasa a ser la pedida, siempre,
+    y D15 deja de ser comprobable) y el cuerpo llega envuelto en la prosa del
+    modelo.
+
+    Y es también lo que sostiene la forma del doble (M1 de la ronda de revisión):
+    `tests/dobles/cli.py::salida_del_cli` emite el sobre **porque esta bandera va
+    en todas las invocaciones**. Si alguien la quita, este test se pone rojo aquí y
+    no en veinte tests que hablan de otra cosa.
+
+    Se acepta cualquiera de las formas conocidas de pedirlo: la bandera es de la
+    herramienta y una lista de nombres envejece (F34), así que el test falla
+    nombrando la propiedad.
+    """
+    puerta = adaptador()
+    doble = cli()
+
+    await puerta.real().puntuar(payload_sintetico(), IDIOMA_POR_OMISION)
+
+    assert doble.llamadas == 1, "el adaptador no lanzó exactamente una invocación"
+    formato = _formato_pedido(doble.ultima.argumentos)
+    assert formato in FORMATOS_ESTRUCTURADOS, (
+        f"la invocación no pide una salida estructurada ({formato!r}): sin el sobre no hay "
+        "`is_error` que mirar —un fallo del proveedor se leería como respuesta del modelo "
+        "(CA13, F8)— ni `modelUsage` del que sacar la versión que D15 y CA15 exigen en cada "
+        f"fila de auditoría. Formas aceptadas: {sorted(FORMATOS_ESTRUCTURADOS)}"
+    )
