@@ -454,7 +454,7 @@ Las líneas de `GET /vacantes/{id}` de los tres CSV de después (22-nov), tal cu
 ```
 despues-1usuario_stats.csv   GET,/vacantes/{id},61,0,66,70.91260492252033,58.37790004443377,108.47059998195618,838619.0,0.5153296446262486,0.0,66,72,75,76,88,98,98,110,110,110,110
 despues_stats.csv            GET,/vacantes/{id},138,0,69,80.42519202327652,58.53959999512881,275.6948999594897,838619.0,2.345582814589953,0.0,69,76,84,88,100,140,250,260,280,280,280
-despues-10usuarios_stats.csv GET,/vacantes/{id},290,0,70,…,838619.0,…,70,…,170,…,660,…
+despues-10usuarios_stats.csv GET,/vacantes/{id},290,0,70,98.40574999990199,57.9645000398159,692.0805999543518,838619.0,4.877767203707636,0.0,70,83,98,100,130,170,630,660,690,690,690
 ```
 
 `Average Content Size` = 838.619 en las tres: locust reporta el cuerpo **ya descomprimido**. Los bytes en el cable están en §10.2.
