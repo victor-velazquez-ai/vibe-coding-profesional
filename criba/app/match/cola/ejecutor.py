@@ -101,15 +101,31 @@ async def una_pasada(bd: Session, proveedor: Proveedor | None = None) -> int:
         # modo rige en cada entorno es precondición de la operación de PR-16.
         await MatchService(repo, proveedor or proveedor_configurado()).puntuar(trabajo)
     except Exception as exc:  # el motivo queda en la fila, no en un log con PII
-        # Mientras PR-14 decide los reintentos, que el candidato no se quede sin fila
-        # en la vista de la vacante: se guarda con score 0 y la razón.
-        repo.guardar_score(
-            trabajo.candidato_id,
-            trabajo.vacante_id,
-            0,
-            ("No se pudo evaluar automáticamente.",),
-            idioma=trabajo.idioma,
-        )
+        # **Un fallo del proveedor no se convierte en un score** (CA13,
+        # `SPEC.md:91-93`; F8, `docs/fallas.md:75`). El fallo es nuestro o del
+        # proveedor, no un juicio sobre el candidato, así que aquí no hay ninguna
+        # de las dos cosas que CA13 permite escribir: ni un score, ni un «sin
+        # score» con un motivo que sea información del candidato. Lo que se
+        # escribe es el cierre del **trabajo**: `error` con el motivo de la cola.
+        #
+        # Y por eso no se toca `match_scores`: `guardar_score` **actualiza la
+        # fila del par** (`match_repo.py:264-271`, CA9(a)), así que escribir por
+        # aquí no solo inventaría un número, también se llevaría el score bueno
+        # que el par ya tuviera. Es el incidente 001: 7 pares con `score=0` y
+        # `estado="listo"`, que para la vista y para `metricas.scores_por_vacante`
+        # son scores de verdad.
+        #
+        # **Pregunta abierta, de PR-14 y no de aquí:** qué ve el reclutador
+        # mientras tanto. Sin fila de score el candidato aparece en «Pendientes
+        # de score» por ausencia (CA6, `SPEC.md:63-65`), pero el trabajo sale de
+        # `pendiente` y hoy nadie lo re-encola, y la tabla de estados de `PLAN.md`
+        # PR-11 quiere la causa transitoria **en `pendiente` con reintentos
+        # acotados** y, al agotarlos, en «sin score con motivo técnico»
+        # re-encolable. Las dos mitades necesitan el lease y el contador de
+        # intentos de PR-14 —dejarlo `pendiente` sin ellos lo haría tomarse en
+        # cada pasada y lo metería para siempre en la alerta de >60 min de CA7—,
+        # así que este paso no la decide: la deja escrita. Lo único que no
+        # negocia CA13 es lo de arriba: ninguna fila de score que nadie calculó.
         _registrar_cierre(
             repo.marcar_trabajo(trabajo.id, "error", motivo=type(exc).__name__[:LARGO_DEL_MOTIVO]),
             comienzo,
