@@ -110,10 +110,10 @@ async def una_pasada(bd: Session, proveedor: Proveedor | None = None) -> int:
             ("No se pudo evaluar automáticamente.",),
             idioma=trabajo.idioma,
         )
-        fallido = repo.marcar_trabajo(
-            trabajo.id, "error", motivo=type(exc).__name__[:LARGO_DEL_MOTIVO]
+        _registrar_cierre(
+            repo.marcar_trabajo(trabajo.id, "error", motivo=type(exc).__name__[:LARGO_DEL_MOTIVO]),
+            comienzo,
         )
-        _registrar_cierre(fallido, comienzo)
         return 1
     _registrar_cierre(repo.marcar_trabajo(trabajo.id, "listo"), comienzo)
     return 1
