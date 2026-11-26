@@ -1,0 +1,105 @@
+{
+  "ronda": 8,
+  "confianza": 80,
+  "veredicto": "cambios",
+  "bloqueantes": [
+    {
+      "id": "B1",
+      "paso": "Cabecera «Llamada 2» + §3 Orden de ejecución + PR-11 + §10.4 (primer párrafo)",
+      "requisito": "CA13 («sin score, nunca un cero»), RE12/RE19 del delta («lo del cero es lo urgente»), RI16 (texto en el idioma del usuario, D11/CA11)",
+      "problema": "El plan dice tres veces que la contención del cero «es PR-11, adelantado por el incidente», pero no cambia nada que lo haga cierto: el orden de ejecución sigue siendo PR-01 → … → PR-08 → PR-10 → PR-09 → PR-11, PR-11 conserva sus dependencias (PR-09, PR-10) y su tamaño (≈340 líneas), y solo PR-01 está mezclado. «Adelantado» es una frase sin mecanismo, la misma clase de defecto que el plan critica en la regla 1.7 antes de la ronda 4. Además, la contención que Tomás aprobó ([01:12], [01:20]) es un cambio de lo que se MUESTRA («no disponible», en los dos idiomas), y PR-11 es validación de respuesta en `scoring.py`: el texto está declarado «lado UI, PR-20» (Etapa 2) y la columna de score vive en `_candidatos.html` (PR-05). Ningún paso del camino principal reúne las tres piezas (no escribir 0, no mostrar 0, texto por idioma).",
+      "escenario": "Se sigue el plan tal cual: H0 termina el 5-dic con PR-07, PR-11 llega tras PR-08, PR-10 y PR-09 (segunda o tercera semana de diciembre). Mientras tanto el staging del piloto, con reclutadoras de Northstar mirando, sigue mostrando ceros a candidatas buenas (CA13 incumplida, [00:18]) y los ceros ya guardados siguen ordenando la lista (RI18). Tomás, que oyó «hazlo» el 22-nov, pregunta el 1-dic qué pasó y la respuesta es «está en PR-11».",
+      "arreglo": "Crear un paso explícito en el camino principal, p. ej. **PR-11a · Contención del incidente del cero**, con su posición en el orden (inmediatamente, antes de PR-02, como camino del RUNBOOK), dependencias reales (lo que haya en staging, P14), y tres aserciones: (1) ningún camino escribe `score = 0` ni muestra un 0 (grep + test con doble que devuelve 0 → estado sin score con motivo técnico re-encolable, tabla de PR-11 fila 3); (2) el texto que sustituye al cero sale en `'es'` y `'en'` según el idioma del contexto (RI16); (3) los pares ya guardados con 0 se re-encolan o se marcan sin score (RI18, P22) y se verifica en el staging del piloto (RI17). PR-11 queda como el paso completo que absorbe PR-11a; §8 cita PR-11a bajo CA13. Si el texto exacto no está decidido por Dana (P21), PR-11a usa «no disponible» / «not available» como supuesto nuestro declarado."
+    }
+  ],
+  "importantes": [
+    {
+      "id": "I1",
+      "paso": "§0 punto 1, §0 punto 3, regla 1.7, PR-01 hecho 9, §3 estado «solo PR-01 mezclado»",
+      "requisito": "Regla 1.5 (ningún cliente real antes de PR-08 y PR-10), regla 1.7 (ningún dato real puntuado antes de PR-18/PR-19; staging solo con sintéticos), CA3, D3 modificado",
+      "problema": "El plan afirma que solo PR-01 está mezclado y que staging no tiene ni entorno ni interruptor, pero el delta describe un piloto en staging con reclutadoras de Northstar, `scoring.py` guardando lo que devuelve el proveedor y `listado.py` con `ROLES_QUE_VEN_MATCH` (delta §2.1 C5 y C7, P14). Los ceros no salen de un MOCK de score fijo, así que o hay cliente real en staging antes de PR-08/PR-10 o hay código fuera del plan. El plan no reconcilia su propio estado con lo que ya corre, y deja la verificación de «staging solo con sintéticos» (hecho 9) para el 1-dic, cuando el piloto ya está en marcha hoy (R18).",
+      "escenario": "El 1-dic se descubre que staging se refrescó desde producción en noviembre: el piloto puntuó candidatos reales de Northstar (y encoló los de Meridian) con un cliente real sin frontera de pseudonimización ni activación por empresa, dos semanas antes de que exista la vía de borrado. Es F2+F5 ejecutados, con el plan diciendo que «el camino que lo viola no existe».",
+      "arreglo": "Añadir a §0 (o a la cabecera de la llamada 2) un párrafo de **estado real**: qué versión corre staging (P14), qué pasos de PR-02…PR-11 están de facto en ese código y si pasaron los tres roles; adelantar el hecho 9 de «1-dic» a «antes de seguir el piloto» como acción del incidente, con la evidencia (consulta sobre `candidatos` de staging) enlazada desde el postmortem; y declarar qué cliente del proveedor corre en staging. Si es el real, la regla 1.5 está incumplida y el plan debe decirlo y fijar la salida (apagar `CRIBA_MATCH_ACTIVO` en staging hasta PR-08 y PR-10, o documentar la excepción con firma de Priya)."
+    },
+    {
+      "id": "I2",
+      "paso": "§0 punto 1, PR-16, §10.4 (lista de preguntas citadas: P16-P20)",
+      "requisito": "CA20 (100 % de cobertura de las tres vacantes de Texas en la cuenta de Northstar), D17, §0 punto 1 («no se puntúa ningún dato real hasta PR-18 y PR-19»)",
+      "problema": "RE20/P15 («quieren que la demo del 15 de enero sea con esto tal cual», [00:06]) abre la posibilidad de que la demo sea en staging con candidatos de prueba, no en la cuenta real con ~680 candidatos. El plan entero (operación de PR-16, seis precondiciones, PR-17, §7) supone la cuenta real. §10.4 cita P16-P20 y omite P15, y A21 del delta la pone como «precondición de la planificación» antes del 1-dic. El plan no la lista ni en §9 ni como dependencia con fecha.",
+      "escenario": "Tomás confirma el 10-dic que la demo es «lo que ven las reclutadoras», o sea staging. La operación de la semana del 29-dic (precondiciones de Priya, cliente real, borrado) deja de ser precondición de la demo y las horas de H1b que la sostienen se gastaron en lo que la demo no necesita; o al revés, nadie pregunta, la demo se hace en staging con sintéticos y CA20 (que habla de la cuenta de Northstar) queda sin ejercer el 15-ene.",
+      "arreglo": "Añadir P15 a §9 como pregunta con fecha (antes del 1-dic, dueño Tomás+Dana, A21/issue 11) y en §7 como acción; en PR-16 escribir las dos ramas: demo en cuenta real (plan actual) o demo en staging con sintéticos (entonces CA20 se mide sobre esa base, la regla 1.7 se cumple por construcción y la operación de datos reales pasa a §10). El plan no decide cuál; dice qué cambia con cada respuesta."
+    },
+    {
+      "id": "I3",
+      "paso": "PR-11 (riesgo F7, medición), PR-09 (tope de tokens), §9",
+      "requisito": "SPEC alcance 2 (entradas: texto del CV y descripción de la vacante), CA13 (nunca un valor que parezca legítimo sin serlo), CA14/F1",
+      "problema": "La llamada trae un dato nuevo: la descripción de la vacante de enfermería de Texas —una de las tres de la demo— tiene ~4 páginas de texto legal ([00:41], RI15, P23). Desde la decisión del 22-nov la descripción viaja en el mismo pedido que el CV y comparte el tope de tokens. F7 y la medición de PR-11 solo hablan del CV; ningún paso dice qué pasa cuando CV + descripción superan el tope (¿se trunca cuál?, ¿pendiente?, ¿sin score con motivo técnico?). A15 del delta extiende la medición a descripciones, pero el plan no lo recoge.",
+      "escenario": "Enero: los ~500 candidatos de enfermería se puntúan con la descripción truncada a las primeras páginas (texto de cumplimiento) y sin los requisitos clínicos del final. Los scores son plausibles y malos, CA14 no lo detecta (las 10 vacantes cerradas tienen descripciones normales) y Dana ve en la demo un orden que no entiende. Es F1 con causa evitable y sin rastro (la auditoría no guarda si hubo truncamiento).",
+      "arreglo": "PR-11: la medición cubre CVs **y** descripciones de las tres vacantes de la demo, con su salida en el cuerpo. PR-09: declarar la conducta ante exceso del tope como fila de la tabla de estados de PR-11 (propuesta: «pendiente con motivo técnico: entrada demasiado larga», nunca truncar en silencio) y registrar en §9 la pregunta 1 de `docs/fallas.md` con el caso concreto de enfermería y dueño (Víctor con Tomás; P23 a Tomás/legal de Northstar). Si el proveedor permite el tope necesario para 4 páginas + CV, el PR lo demuestra con la medición y la pregunta se cierra."
+    },
+    {
+      "id": "I4",
+      "paso": "PR-27 (Archivos, Tests primero, Criterio de terminado)",
+      "requisito": "CA18 (nombra por separado score, razones, orden por score, sección de pendientes y el 403 de los endpoints), CA1, D21",
+      "problema": "PR-27 presupone que el permiso se resuelve añadiendo el hiring manager al conjunto único `ROLES_QUE_VEN_MATCH`, y a la vez deja abierta P17 (¿solo score y porqué, o también orden y «Pendientes»?). Con la opción (b) de PR-05 el conjunto gobierna tanto la columna de score en `_candidatos.html` como el endpoint `GET /match/vacantes/{id}/lista?orden=score` (PR-05/PR-20). Si la respuesta a P17 es «solo score y porqué» ([01:58] «aunque sea solo»), un conjunto único no puede expresarlo: o el HM gana el orden por score (más de lo decidido) o no ve nada. Supuesto escondido de diseño en un cambio de permisos que el propio plan califica de incidente de seguridad si sale mal (R16).",
+      "escenario": "Se aprueba el cambio a D10 como «score y razones, sin orden». El desarrollador añade HM al conjunto, el test «por rol» pasa, y el fragmento `orden=score` responde 200 al HM; o se parchea con un `if rol == HM` en el router, fuera del único punto, que es lo que R16 y F34 advierten.",
+      "arreglo": "PR-27 declara las dos formas posibles de la decisión y qué exige cada una: si P17 = «todo lo del reclutador, en solo lectura», basta el conjunto; si P17 = «solo score y porqué», el permiso se divide en dos conjuntos en el mismo módulo (`ROLES_QUE_VEN_SCORE`, `ROLES_QUE_ORDENAN_POR_SCORE`) y el test de CA18 enumera los endpoints de Match por rol, no por conjunto. Añadir la auditoría del acceso del HM como pregunta explícita a Priya en el issue 12 (RI20), no como «si se decide»."
+    },
+    {
+      "id": "I5",
+      "paso": "§10.4, §9, PR-13/PR-15 (alertas)",
+      "requisito": "CA13 (detección de ceros/valores inválidos guardados), RI14 y R17 del delta; F8 columna «detección»: «un 0 guardado no dispara nada»",
+      "problema": "El incidente confirma el punto ciego que `docs/fallas.md` F8 ya escribió: la única señal fue Dana, un día después. El delta lo convierte en A22 (señal propia de calidad del score: ceros en masa, caída de distribución, a quién avisa), con dueño Víctor «con el postmortem». El plan no la recoge en ningún sitio: ni en §9, ni como PR condicional, ni en PR-15 (donde ya vive la alerta de pendientes). Riesgo sin dueño dentro del plan.",
+      "escenario": "Diciembre, PR-11 ya mezclado: el proveedor cambia de versión y empieza a devolver scores válidos pero concentrados en 5-10 para todo el mundo (F26/F42). CA13 se cumple, la alerta de CA7 no salta, y la demo del 15-ene se descubre otra vez por Dana.",
+      "arreglo": "Añadir a §9 la pregunta «¿entra una señal propia de distribución de scores en la v1 y quién la recibe?» con dueño y fecha (Víctor propone en el postmortem; Tomás acepta el alcance, A22), y un paso condicional PR-C6 (alerta barata en PR-15: proporción de scores ≤ N o de «sin score técnico» por vacante en 24 h por encima de un umbral declarado, al mismo destinatario que la alerta de CA7, pregunta 8). Sin decidirlo aquí: con casa y fecha."
+    }
+  ],
+  "menores": [
+    {
+      "id": "M1",
+      "paso": "PR-28 (Condicionado a / Criterio de terminado)",
+      "requisito": "CA9, D23 (coherencia interna del plan)",
+      "problema": "PR-28 dice «mientras CA9 diga lo que dice hoy, este PR no se implementa», pero su propia opción (a) —«D23 tal cual con marca de versión anterior en la UI»— no contradice CA9 ni D23: es la pregunta abierta 7 de la SPEC y ya tiene paso (PR-C4). Si Tomás elige (a), la condición escrita bloquea un trabajo que no necesita cambiar ninguna decisión.",
+      "escenario": "Tomás y el CFO eligen (a) en febrero; alguien lee PR-28 y espera un PR en `docs/decisiones-propuestas/` que reescriba CA9, que no hace falta, y la marca en la UI se retrasa un ciclo.",
+      "arreglo": "Separar en PR-28: la opción (a) se ejecuta como PR-C4 con la respuesta a la pregunta 7 (sin tocar CA9/D23); solo (b) y (c) exigen reemplazar D23 y reescribir CA9, y (b)/(c) además la enmienda de la clave de idempotencia de ADR-001 §Decisión 3, que ya está pendiente de su propio PR desde R1·B2."
+    },
+    {
+      "id": "M2",
+      "paso": "Cabecera «Llamada 2» / §10.4 / REGISTRO (fila llamada 2)",
+      "requisito": "Trazabilidad del plan (§1: «donde falta una decisión, el paso queda bloqueado y la pregunta vive en §9»)",
+      "problema": "La llamada 2 deja preguntas abiertas que no son de PR-27 ni PR-28 y que el plan no lista en §9: P13 (alcance real de los ceros), P14 (qué versión corre staging), P21 (texto exacto en dos idiomas, Dana), P22 (qué se hace con los ceros guardados y qué se le dice al piloto, RI21). Hoy viven solo en el delta.",
+      "escenario": "Se cierra el postmortem sin P22 resuelta y las reclutadoras del piloto nunca reciben una explicación; R11 (confianza perdida) se consolida justo con el cliente que decide la renovación.",
+      "arreglo": "Añadir P13, P14, P21 y P22 a §9 con dueño y fecha (las cuatro antes de cerrar el postmortem, A16/A17), y enlazar la fila 3 de la tabla de estados de PR-11 con P21."
+    },
+    {
+      "id": "M3",
+      "paso": "PR-27 (Dependencias / Riesgo)",
+      "requisito": "R12 del delta (descarte de facto, ahora dicho por el cliente [01:04]), D20 / ley 144",
+      "problema": "PR-27 cita la ley 144 como precondición pero no conecta con F39/RI12: ampliar quién ve el orden por score amplía quién «no mira abajo». El paso no exige que la decisión que reemplace D10 diga algo sobre el hiring manager y los candidatos con score bajo, que es exactamente la preocupación que Tomás expresa en la misma llamada.",
+      "escenario": "Se aprueba D10 nuevo con «el HM ve la lista ordenada por score»; el HM, que sí decide a quién entrevistar, mira los diez primeros. Northstar opera en Nueva York.",
+      "arreglo": "En el criterio de terminado de PR-27, exigir que la propuesta de cambio a D10 responda explícitamente si el HM ve el orden por score (P17) y cómo se mantiene «nadie oculto» (CA8) en su vista, y citarlo en el issue 12 para el abogado."
+    }
+  ],
+  "descartados_por_exoticos": [
+    {
+      "idea": "Un hiring manager de Meridian llega a ver scores de Northstar tras PR-27",
+      "por_que": "CA1 recorre todos los endpoints con sesión de otra empresa y el permiso vive en el único punto; PR-27 no abre un segundo camino de datos, solo amplía un rol dentro de la misma empresa."
+    },
+    {
+      "idea": "Carrera entre el recálculo automático por edición (PR-28) y un lote manual del admin",
+      "por_que": "PR-28 no se implementa hasta que exista decisión; PR-14 ya compara el hash del trabajo con el actual al escribir y la idempotencia por lote cubre el caso cuando llegue."
+    },
+    {
+      "idea": "El costo real de la opción (c) de PR-28 revienta el techo D12 el primer mes",
+      "por_que": "Es precisamente lo que PR-28 exige calcular antes de elegir; sin precio por score medido (supuesto 3 de fallas) cualquier número hoy es invención."
+    },
+    {
+      "idea": "La zona horaria del límite «1/día» interactúa con un recálculo por edición",
+      "por_que": "Ya descartada por `docs/fallas.md` y por la ronda 1; PR-28 ni siquiera está decidido."
+    },
+    {
+      "idea": "El hiring manager, con acceso de solo lectura al score, lo exporta o lo copia fuera de Criba",
+      "por_que": "Es el mismo riesgo que ya existe con reclutadores y admins; no lo añade PR-27 y no hay control de la SPEC que lo cubra para ningún rol."
+    }
+  ]
+}
