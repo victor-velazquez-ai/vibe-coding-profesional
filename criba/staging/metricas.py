@@ -1,9 +1,12 @@
 """Consulta de métricas para tu agente durante un incidente, **con el rol `agente_metricas`**.
 
 Es la puerta que le das a tu agente en producción: una consulta SQL, una transacción
-de solo lectura y el rol que solo ve las vistas agregadas de `metricas`. No hay forma
-de pedir otra cosa: si la consulta toca `candidatos` o `match_scores`, Postgres
-responde «permission denied», y eso es lo que tiene que pasar.
+de solo lectura y el rol que solo ve las vistas agregadas de `metricas`. `sys.argv[1]`
+entra literal en `con.execute`, y eso está bien planteado **porque acota el rol**
+(`agente_metricas`, `staging/roles.sql`), no este guion: si la consulta toca
+`candidatos` o `match_scores`, Postgres responde «permission denied», y eso es lo
+que tiene que pasar. Sin el `GRANT` del rol, esto sería una superficie para correr
+SQL arbitrario.
 
   uv run --env-file staging/staging.env python staging/metricas.py
       "SELECT * FROM metricas.scores_por_vacante"

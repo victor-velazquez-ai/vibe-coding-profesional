@@ -36,7 +36,11 @@ from app.plataforma.repositorio import CandidatoDeLista, FilaCandidato, Reposito
 from app.plataforma.sesion import ContextoEmpresa
 
 ORDEN_POR_FECHA = "fecha"
-LOG_DEL_LISTADO = "criba.match.listado"
+# Bajo `app.`, como `LOG_DEL_EJECUTOR` (`cola/ejecutor.py`): `SoloNuestrosLoggers`
+# (`app/registro.py`) solo deja pasar al archivo los loggers `app` o `app.*`, y
+# con el prefijo `criba.` la línea de `match.listar_vacante` no llegaba nunca a
+# `staging/logs/app.jsonl` (RUNBOOK.md §2). Un solo prefijo en el proceso.
+LOG_DEL_LISTADO = "app.match.listado"
 
 # Quién ve Match: el hiring manager no (CA18, D10) y el staff de Criba sí, porque
 # CA17 presupone que soporte puede ver el score y las razones (D6, D21).
