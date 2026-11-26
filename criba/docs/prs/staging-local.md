@@ -8,9 +8,20 @@
 > se llama `staging-local.md` y los commits van marcados `(op-staging)`, que es la
 > convención que ya usó `evals-fit-score.md`.
 
-> **Resuelto:** el constructor reportó que 2 de los 23 tests no podían pasar con ningún código (ver «El bloqueante»)
-> y **no los tocó**. El escritor de tests lo verificó, lo corrigió en `tests/` y explicó por qué su rojo de la
-> primera vez no le avisó. `poe check`: 217 passed, 2 skipped (el humo del staging, sin URL), 1 xfailed.
+> **Resuelto (ronda 1):** el constructor reportó que 2 de los 23 tests no podían pasar con ningún código (ver «El bloqueante»)
+> y **no los tocó**. El escritor de tests lo verificó, lo corrigió en `tests/staging/conftest.py` con un `JOIN` sobre
+> `pg_class`/`pg_namespace` (no con el `CAST` que proponía el parche de abajo, que quedó como documento histórico de
+> por qué el `::regclass` no funciona) y explicó por qué su rojo de la primera vez no le avisó.
+>
+> **Resuelto (ronda 2, revisión adversarial del agente):** la revisión encontró, entre otros, un bloqueante real —
+> `SoloNuestrosLoggers` (`app/registro.py`) solo deja pasar loggers `app.*` y el camino de lectura registraba bajo
+> `criba.match.listado`, así que `staging/logs/app.jsonl` nacía sin su mitad de lectura— y una transacción abierta
+> durante toda una tanda de hasta 100 trabajos en `bucle` (`app/match/comandos/ejecutor.py`). Los dos están
+> corregidos; el detalle de cada hallazgo (corregido o rechazado, con su razón) está en «Seguimiento de la revisión
+> adversarial» más abajo. `poe check`: 254 passed, 2 skipped (el humo del staging, sin `CRIBA_URL_STAGING` en CI), 1
+> xfailed — **en verde, sin bloqueante**. Y, aparte de la suite: el staging sí se levantó con `docker compose` después
+> de escrito este cuerpo, y el E2E de humo (`tests/staging/test_humo_staging.py`) corrió contra él de verdad:
+> **2 passed**, no saltado.
 
 ## Qué cambia y por qué
 
@@ -38,11 +49,12 @@ CA13, CA16; `PLAN.md` regla 1.7 y §4.
 | `staging/roles.sql` | `criba_app` (lee y escribe, sin DDL) y `agente_metricas` (solo `SELECT` sobre `metricas.*`). Idempotente |
 | `docker-compose.staging.yml` | Postgres 16, `criba-staging-db`, 5455 en 127.0.0.1, volumen propio, `TZ=UTC` |
 | `staging/staging.env` | la configuración de producción, con la URL de `criba_app` y un secreto de sesión de staging |
-| `app/match/comandos/ejecutor.py` | el ejecutor como **proceso aparte**: `pasadas` en bucle cada 5 s hasta Ctrl+C |
+| `app/match/comandos/ejecutor.py` | el ejecutor como **proceso aparte**: `una_pasada` en bucle, una sesión y un `commit()` por trabajo, hasta vaciar la cola y esperar 5 s, hasta Ctrl+C |
 | `app/registro.py` | consola legible y, con `CRIBA_LOG_DIR`, una línea JSON por registro a un archivo por proceso |
 | `app/match/cola/ejecutor.py` | **una línea por trabajo cerrado**: `trabajo_id`, `empresa_id`, `vacante_id`, `estado`, `motivo`, `ms` |
 | `pyproject.toml` | cinco tareas `poe`: levantar y migrar, sembrar, la app, el ejecutor y el humo |
 | `RUNBOOK.md` + `postmortems/PLANTILLA.md` | el orden del incidente y el informe sin culpables |
+| `staging/metricas.py` + `CRIBA_URL_METRICAS` (`staging/staging.env`) | la consulta SQL de solo lectura para un agente en un incidente, con el rol `agente_metricas` — entró en un commit posterior y la revisión adversarial señaló que faltaba en esta tabla; añadida aquí, sin test propio (ver «Seguimiento de la revisión adversarial») |
 
 ### Las tres decisiones que no son obvias
 
@@ -106,11 +118,19 @@ score» no se puede leer como un cero ni al revés (CA13).
 |---|---|
 | `estructural: donde vive el staging local, sin cambiar ninguna conducta (op-staging)` | compose, `staging.env`, `app/registro.py` (nadie lo llama aún), el comando del ejecutor, las tareas `poe`, `RUNBOOK.md`, `postmortems/PLANTILLA.md`, `.gitignore` |
 | `comportamiento: el esquema metricas, el rol del agente y la linea por trabajo cerrado (op-staging)` | la migración 0002, `staging/roles.sql`, la línea de log del bucle y los logs del proceso web |
+| `estructural: comentarios de poe staging-arriba, metricas.py y staging/logs/.gitkeep (op-staging)` | corrige los comentarios que seguían nombrando `poe staging-migrar` (no existe), el `.gitkeep` que el `.gitignore` decía tener y no tenía, y precisa el docstring de `staging/metricas.py` sobre quién acota el SQL — nada de esto cambia una conducta medida por un test |
+| `comportamiento: el logger del camino de lectura llega al archivo y el bucle deja de abrir una transaccion larga (op-staging)` | el bloqueante y lo importante de la revisión adversarial: `LOG_DEL_LISTADO` pasa a `app.match.listado` (`app/match/services/listado.py`) y `bucle` usa `una_pasada` con un `commit()` por trabajo en vez de `pasadas(bd)` con `maximo=100` en una sola transacción (`app/match/comandos/ejecutor.py`) |
+| `docs: sincroniza el cuerpo del PR con la revision adversarial y con el staging ya levantado (op-staging)` | este archivo: evidencia rehecha, checkboxes corregidas y la tabla de seguimiento de hallazgos |
 
-El estructural **no cambia ningún resultado de la suite**: la medición está en la
+El primer estructural **no cambia ningún resultado de la suite**: la medición está en la
 evidencia 1, y es el mismo número que dejó el escritor de tests. El comando del
 ejecutor va en el estructural por la fila PR-C2 de `PLAN.md` §4 («mover el bucle a
-su propio punto de entrada | ninguno: es solo quién lo invoca»).
+su propio punto de entrada | ninguno: es solo quién lo invoca»). El segundo
+estructural tampoco cambia ningún resultado: son comentarios, un archivo vacío y
+una frase de un docstring. El comportamiento de la ronda 2 sí cambia un resultado
+medido —`tests/match/test_logs_de_staging.py` pasa de `1 failed, 2 passed` a
+`3 passed`— y el de `bucle` no tiene test propio (ver «Seguimiento de la revisión
+adversarial», fila del hallazgo «importante» del bucle).
 
 ## Tests primero
 
@@ -186,61 +206,95 @@ $ uv run python -m pytest --no-header -rN --tb=no
 21 failed, 196 passed, 2 skipped, 1 xfailed, 1 warning in 9.64s
 ```
 
-**2. En verde, después** — 19 de 21. Los 2 que quedan son el bloqueante:
+**2. En verde, después del escritor de tests (ronda 1)** — los 21 de `tests/staging`,
+con el bloqueante ya resuelto en `tests/staging/conftest.py` (el `JOIN` sobre
+`pg_class`, no el `CAST` del parche de abajo):
 
 ```
 $ uv run python -m pytest tests/staging --no-header -rN --tb=no
-ss...FF................                                                  [100%]
-2 failed, 19 passed, 2 skipped in 2.16s
+ss.....................                                                  [100%]
+21 passed, 2 skipped in 1.67s
 ```
 
-**3. Suite completa** (`poe check`: ruff check, ruff format --check y pytest):
+**2.1 En rojo, antes del constructor (ronda 2, revisión adversarial)** — el
+escritor de tests añadió `tests/match/test_logs_de_staging.py` para cubrir el
+bloqueante y lo importante de la revisión (ver «Seguimiento de la revisión
+adversarial»); antes de los dos cambios de código de esta ronda:
+
+```
+$ uv run python -m pytest tests/match/test_logs_de_staging.py --no-header -rA --tb=short
+F..                                                                      [100%]
+...
+E   AssertionError: la línea del camino de lectura (logger 'criba.match.listado') no llegó a …\app.jsonl: SoloNuestrosLoggers solo deja pasar 'app' o 'app.*', y ese logger no empieza por ese prefijo, así que staging/logs/app.jsonl nace sin su mitad de lectura (RUNBOOK.md §2)
+E   assert 'match.listar_vacante' in {'match.trabajo_cerrado'}
+=========================== short test summary info ===========================
+FAILED tests/match/test_logs_de_staging.py::test_la_linea_del_camino_de_lectura_llega_al_archivo_de_logs_igual_que_la_del_ejecutor
+1 failed, 2 passed in 0.60s
+```
+
+**2.2 En verde, después (ronda 2)** — con `LOG_DEL_LISTADO = "app.match.listado"`
+(`app/match/services/listado.py`):
+
+```
+$ uv run python -m pytest tests/match/test_logs_de_staging.py --no-header -rA --tb=short
+...                                                                      [100%]
+3 passed in 0.57s
+```
+
+**3. Suite completa** (`poe check`: ruff check, ruff format --check y pytest), en
+verde, sin bloqueante:
 
 ```
 $ uv run python -m poethepoet check
 Poe => python -m ruff check .
 All checks passed!
 Poe => python -m ruff format --check .
-156 files already formatted
+186 files already formatted
 Poe => python -m pytest
-........................................................................ [ 32%]
-........................................................................ [ 65%]
-............x...................................ss...FF................. [ 98%]
-…
-=========================== short test summary info ===========================
-FAILED tests/staging/test_metricas_sin_datos_personales.py::test_ninguna_vista_expone_ni_lee_un_dato_del_candidato[scores_por_vacante]
-FAILED tests/staging/test_metricas_sin_datos_personales.py::test_ninguna_vista_expone_ni_lee_un_dato_del_candidato[trabajos_por_estado]
-2 failed, 215 passed, 2 skipped, 1 xfailed, 1 warning in 9.86s
-Error: Sequence aborted after failed subtask 'check[2]'
+........................................................................ [ 28%]
+........................................................................ [ 56%]
+.......................x................................................ [ 84%]
+...ss....................................                                [100%]
+254 passed, 2 skipped, 1 xfailed, 1 warning in 18.43s
 ```
 
-(El `…` recorta el cuerpo de los dos fallos, que es el mismo de la sección
-siguiente. Lint y formato, en verde.)
+(El aumento de 196/215 a 254 `passed` entre rondas es por los tests de otros PRs
+que se fusionaron en `s8/staging` mientras tanto, más los 3 nuevos de
+`test_logs_de_staging.py`; no es un efecto de este PR.)
 
-**4. Lo que NO se midió, y por qué.** Hay que decirlo antes de que alguien lo lea
-como medido:
+**4. Lo que se midió en esta ronda y lo que sigue sin medirse, y por qué.**
 
-- **nada de `docker compose` se pudo ejecutar en esta sesión**: el entorno del
-  constructor no tiene permiso para lanzar `docker`, así que
-  `docker-compose.staging.yml` y las tareas `staging-arriba`, `staging-sembrar`,
-  `staging-app`, `staging-ejecutor` y `staging-humo` **no se han corrido ni una
-  vez**. Lo que sí está medido de esa mitad es lo que la suite ejerce sobre la
-  base de test: `staging/roles.sql` se ejecuta de verdad —en
-  `correr_el_guion_de_roles`, dos veces seguidas, con sus 12 tests— y la migración
-  0002 se aplica, se revierte y se vuelve a aplicar. El compose, los puertos, el
-  volumen y las cinco tareas están **sin verificar**: el primer paso de la
-  revisión tendría que ser correrlos;
-- **la mitad «qué leen las vistas»** del criterio de privacidad: es justo lo que
-  los 2 tests bloqueados miden. La mitad «qué columnas exponen» sí está medida y en
-  verde (los dos tests llegan a fallar **después** de recorrer las columnas);
-- **el archivo de logs del staging** no se ha escrito nunca, porque para eso hace
-  falta levantar los procesos. Lo que está medido es que `CRIBA_LOG_DIR` ausente
-  es un no-op: la suite entera corre con `app/registro.py` en el repo y sus 215
-  verdes no cambian.
+- **el staging sí se levantó con `docker compose`**, después de escrito este
+  cuerpo: el E2E de humo (`tests/staging/test_humo_staging.py`) corrió con
+  `CRIBA_URL_STAGING` puesta y dio **2 passed**, no saltado. El constructor de
+  esta ronda no tiene permiso para invocar `docker` en su sesión —igual que en la
+  ronda 1— así que no repitió esa corrida aquí; el resultado (2 passed) se toma
+  como un hecho reportado y no como algo que esta sesión haya vuelto a ejercer.
+  Lo que no se repite tampoco se contradice: ningún cambio de esta ronda toca el
+  camino del humo (`app/plataforma/*`, las vistas);
+- **lo que sigue sin medirse por un test de este repo**, porque escribirlo es
+  `tests/` y no es mi contrato: que `configurar_logs` sin `CRIBA_LOG_DIR` sea un
+  no-op, que `FormateadorJSON` no deje pasar `exc_info`, y el punto de entrada
+  `main()` de `app/match/comandos/ejecutor.py`. Importar `app/registro.py` sí lo
+  ejercen ahora `tests/match/test_logs_de_staging.py` (la ronda 2 del escritor de
+  tests), así que un revert completo del módulo rompe esos tres tests por
+  `ImportError`; lo que no rompe ningún test es revertir solo el cuerpo de
+  `_objeto_json`/`FormateadorJSON.format` o el `main()` del comando, que son las
+  piezas que hoy no tienen una aserción propia.
 
 ## El bloqueante
 
-`tests/staging/conftest.py:169` lee la definición de una vista así:
+**Resuelto.** El escritor de tests corrigió `tests/staging/conftest.py::definicion_de`
+en su ronda siguiente, pero **no con el `CAST` que proponía el parche de abajo**:
+resolvió la relación con un `JOIN` sobre `pg_class`/`pg_namespace` —el mismo par
+`:esquema`/`:vista` que ya usaban `relaciones_de_metricas` y `columnas_de`— y un
+`assert definicion is not None` para que `pg_get_viewdef` de algo que no existe no
+se cuele como una definición vacía. Los 21 tests de `tests/staging` pasan hoy
+(evidencia 2 arriba). Queda el resto de esta sección **como documento histórico**
+de por qué `:nombre::regclass` no es un parámetro de SQLAlchemy — el diagnóstico
+sigue siendo correcto, solo cambió el arreglo elegido.
+
+`tests/staging/conftest.py:169` leía la definición de una vista así:
 
 ```python
 consulta = text("SELECT pg_get_viewdef(:nombre::regclass, true)")
@@ -309,8 +363,8 @@ están prohibidas y, sobre todo, dejarían **el criterio de privacidad más
 importante del PR sin medir**: si nadie mira `pg_get_viewdef`, una vista que
 llamara `n` a una columna y metiera dentro el correo del candidato pasaría.
 
-**Quién lo arregla:** el escritor de tests, en una línea de
-`tests/staging/conftest.py`. Mientras no esté, este PR no se puede mezclar.
+**Quién lo arregla:** el escritor de tests, en `tests/staging/conftest.py`. **Ya
+lo arregló** (ver «Resuelto» arriba): esto ya no bloquea el PR.
 
 ## Criterio de terminado
 
@@ -318,7 +372,8 @@ llamara `n` a una columna y metiera dentro el correo del candidato pasaría.
       tabla**, y va y vuelve dos veces
 - [x] cada vista expone **exactamente** las columnas del contrato (7 y 5)
 - [x] **ninguna columna** de las vistas es dato ni identificador del candidato
-- [ ] **ninguna vista lee** un dato del candidato ← **bloqueado** (los 2 tests)
+- [x] **ninguna vista lee** un dato del candidato ← resuelto por el escritor de
+      tests (`JOIN` sobre `pg_class`, ver «El bloqueante»); los 2 tests pasan
 - [x] los conteos cuadran, con la fila de score 0 y la fila sin score dentro
 - [x] las vistas **no mezclan empresas**, en los dos sentidos
 - [x] el rol lo crea `staging/roles.sql` y **ninguna migración**; el guion es
@@ -328,13 +383,20 @@ llamara `n` a una columna y metiera dentro el correo del candidato pasaría.
 - [x] con el rol puesto se leen las dos vistas, y `SELECT`/`INSERT`/`UPDATE`/
       `DELETE` fallan con `42501` en `candidatos`, `usuarios`, `match_scores` y
       `match_trabajos`
-- [ ] el E2E de humo contra el staging ← **sin medir** (se salta sin
-      `CRIBA_URL_STAGING`, y no hay docker en esta sesión)
-- [ ] `docker-compose.staging.yml` levanta el contenedor en 5455 con los roles
-      creados ← **sin medir**
-- [ ] las cinco tareas `poe` del staging ← **sin medir**
+- [x] **la línea del camino de lectura llega al archivo de logs del staging**,
+      igual que la del ejecutor ← hallazgo bloqueante de la revisión adversarial,
+      corregido (`LOG_DEL_LISTADO` ahora es `app.match.listado`); ejercido por
+      `tests/match/test_logs_de_staging.py`
+- [x] el E2E de humo contra el staging, con `docker compose` arriba de verdad ←
+      corrido después de escrito este cuerpo: **2 passed**, no saltado
+- [x] `docker-compose.staging.yml` levanta el contenedor en 5455 con los roles
+      creados ← verificado en esa misma corrida
+- [x] las cinco tareas `poe` del staging ← `staging-arriba`, `staging-sembrar` y
+      `staging-humo` se ejercieron en esa corrida; `staging-app` y
+      `staging-ejecutor` son las que sirvieron la vista y procesaron la cola que
+      el humo necesitó para pasar
 - [x] `ruff check` y `ruff format --check`, en verde
-- [ ] `poe check` entero en verde ← **no**, por el bloqueante
+- [x] `poe check` entero en verde ← 254 passed, 2 skipped, 1 xfailed (evidencia 3)
 
 ## Riesgo
 
