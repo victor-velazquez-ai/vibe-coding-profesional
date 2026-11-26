@@ -37,7 +37,7 @@
             </td>
             <td>
               {% if fila.candidato.tiene_cv %}
-                <span class="badge tone-success">{{ fila.candidato.cv_texto|length }} caracteres</span>
+                <span class="badge tone-success">{{ fila.candidato.largo_cv }} caracteres</span>
               {% else %}
                 <span class="badge tone-warning">sin CV</span>
               {% endif %}
@@ -47,20 +47,16 @@
             {% if sesion.puede_escribir %}
               <td class="nowrap">
                 <div class="cluster">
+                  {# El editor no viaja con la lista: se pide al abrir el
+                     `<details>`, y por eso el `hx-trigger` es `toggle` y no
+                     `load` (`perf/MEDICION.md` §6 nº 1). Con 500 filas, 500
+                     editores que nadie abre son 542 KB de CV en el cuerpo. #}
                   <details>
                     <summary class="btn btn--secondary btn--sm">CV</summary>
-                    <form class="form" hx-post="/candidatos/{{ fila.candidato.id }}/cv"
-                          hx-target="#candidatos" hx-swap="outerHTML">
-                      <input type="hidden" name="vacante_id" value="{{ vacante.id }}">
-                      <div class="field">
-                        <label class="field__label" for="cv-{{ fila.candidato.id }}">
-                          CV en texto
-                        </label>
-                        <textarea class="textarea" id="cv-{{ fila.candidato.id }}" name="cv_texto"
-                                  required>{{ fila.candidato.cv_texto or '' }}</textarea>
-                      </div>
-                      <button class="btn btn--primary btn--sm" type="submit">Guardar CV</button>
-                    </form>
+                    <div hx-get="/candidatos/{{ fila.candidato.id }}/cv?vacante_id={{ vacante.id }}"
+                         hx-trigger="toggle from:closest details once" hx-swap="outerHTML">
+                      <p class="muted">Abriendo el CV…</p>
+                    </div>
                   </details>
                   <form hx-post="/candidatos/{{ fila.candidato.id }}/borrar"
                         hx-target="#candidatos" hx-swap="outerHTML"

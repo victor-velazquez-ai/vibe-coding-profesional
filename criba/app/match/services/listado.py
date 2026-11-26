@@ -31,8 +31,8 @@ from app.match.configuracion import ajustes_match
 from app.match.repositories.contexto import ContextoDeEmpresa
 from app.match.repositories.match_repo import RepositorioDeMatch
 from app.match.repositories.modelos import ScoreDeMatch
-from app.plataforma.modelos import Candidato, Postulacion, Rol, Vacante
-from app.plataforma.repositorio import FilaCandidato, RepositorioEmpresa
+from app.plataforma.modelos import Postulacion, Rol, Vacante
+from app.plataforma.repositorio import CandidatoDeLista, FilaCandidato, RepositorioEmpresa
 from app.plataforma.sesion import ContextoEmpresa
 
 ORDEN_POR_FECHA = "fecha"
@@ -47,9 +47,14 @@ _log = logging.getLogger(LOG_DEL_LISTADO)
 
 @dataclass(frozen=True, slots=True)
 class FilaDeLista:
-    """Una fila de hoy, con lo de Match encima si el rol y la empresa lo permiten."""
+    """Una fila de hoy, con lo de Match encima si el rol y la empresa lo permiten.
 
-    candidato: Candidato
+    El candidato es el `CandidatoDeLista` de la plataforma —sin `cv_texto`, que
+    la lista no pinta (`perf/MEDICION.md` §6 nº 1)—: Match no añade ni quita
+    columnas de la fila de hoy, solo le pone score, razones y estado encima.
+    """
+
+    candidato: CandidatoDeLista
     postulacion: Postulacion
     notas: int
     score: int | None = None
