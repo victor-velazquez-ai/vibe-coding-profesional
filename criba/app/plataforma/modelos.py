@@ -30,9 +30,21 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, MappedColumn, mapped_column, relationship
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.db import Base
+
+# Los blancos que `str.strip()` recorta, **enumerados**. `Candidato.tiene_cv` se
+# evalúa en dos sitios —en Python sobre un candidato cargado y en Postgres sobre
+# la proyección de la lista—, y `btrim` exige el juego de caracteres explícito
+# mientras que `strip()` sin argumentos usa `str.isspace()`. Esta comprensión es
+# ese mismo conjunto y no un subconjunto a ojo: en todo Unicode hay 29
+# caracteres con `isspace()` y el mayor es U+3000, así que el rango los cubre
+# todos. Con esto las dos mitades de `tiene_cv` recortan exactamente lo mismo
+# para cualquier texto, incluido un `\xa0` suelto.
+BLANCOS_DEL_CV = "".join(c for c in map(chr, range(0x3001)) if c.isspace())
 
 
 class Rol(StrEnum):
@@ -151,9 +163,32 @@ class Candidato(Base):
     )
     creado_en: Mapped[datetime] = _ahora()
 
-    @property
+    @hybrid_property
     def tiene_cv(self) -> bool:
+        """«Este candidato tiene CV»: hay texto y no es solo blancos.
+
+        La respuesta es la de siempre, **letra por letra**. Lo que cambia es que
+        es un `hybrid_property` y no una `property`: la lista de la vacante ya no
+        trae el `cv_texto` (`perf/MEDICION.md` §6 nº 1) y necesita esta misma
+        respuesta sin el texto, así que `RepositorioEmpresa.candidatos_de_vacante`
+        proyecta **esta definición** y la contesta Postgres por fila. La regla se
+        escribe una vez y no puede divergir entre la insignia de la tabla y el
+        `· sin CV` del `<select>`, que leen el mismo nombre desde objetos
+        distintos (revisión de PR-PERF-1, ronda 1, M1).
+        """
         return bool(self.cv_texto and self.cv_texto.strip())
+
+    @tiene_cv.inplace.expression
+    @classmethod
+    def _tiene_cv_en_sql(cls) -> ColumnElement[bool]:
+        """La misma regla de arriba, para que la conteste Postgres.
+
+        `btrim` con `BLANCOS_DEL_CV` recorta exactamente los caracteres que el
+        `strip()` de arriba, y `coalesce` cubre el `cv_texto` nulo, que en SQL no
+        es falso sino nulo. Lo que cruza el driver es un booleano: el texto no
+        sale de Postgres.
+        """
+        return func.coalesce(func.length(func.btrim(cls.cv_texto, BLANCOS_DEL_CV)), 0) > 0
 
 
 class Postulacion(Base):

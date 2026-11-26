@@ -15,6 +15,7 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as ErrorHTTP
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.match import fachada
 from app.plantillas import plantillas
@@ -31,6 +32,15 @@ TITULOS_DE_ERROR = {
 
 def crear_app() -> FastAPI:
     app = FastAPI(title="Criba", docs_url=None, redoc_url=None, openapi_url=None)
+
+    # Cambio nº 3 de `perf/MEDICION.md` §6: el HTML de la vacante son 1,52 MiB muy
+    # repetitivos que hoy viajan tal cual (§5.2). Para CA5 da casi igual —el
+    # `loopback` no cobra— pero es la fila «página visible en celular, buena red:
+    # < 2 s» de la tabla de rendimiento de `SPEC.md` la que se decide aquí.
+    # Comprime **solo si el cliente lo acepta**: el que pide `identity` recibe el
+    # mismo HTML de siempre. El `minimum_size` es el de Starlette (500 bytes): por
+    # debajo de eso comprimir cuesta CPU y no ahorra cable.
+    app.add_middleware(GZipMiddleware)
 
     app.mount("/static", StaticFiles(directory=str(ESTATICOS)), name="static")
 
