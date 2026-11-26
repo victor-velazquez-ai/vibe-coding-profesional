@@ -73,18 +73,31 @@ CELDA_DE_SCORE = 'data-testid="score"'
 PATRON_DE_VACANTE = re.compile(r'href="/vacantes/(\d+)">\s*([^<]+?)\s*</a>')
 
 
-def _entrar(usuario: str) -> httpx.Client:
+def _cliente() -> httpx.Client:
+    """Un cliente **sin abrir**: quien lo use debe entrar con `with`.
+
+    `httpx.Client` pasa de `UNOPENED` a `OPENED` en la primera petición, no
+    solo al entrar con `with`. Si `_entrar` hiciera aquí el `POST /entrar`,
+    devolvería un cliente ya `OPENED`, y el `with _entrar(...) as cliente:`
+    de los tests fallaría con «Cannot open a client instance more than
+    once.» al intentar abrirlo otra vez. Por eso la creación no manda
+    ninguna petición: el `with` del test es el único que lo abre.
+    """
+    return httpx.Client(base_url=URL_STAGING, timeout=SEGUNDOS, follow_redirects=False)
+
+
+def _entrar(cliente: httpx.Client, usuario: str) -> None:
     """Login por el camino de producción: `POST /entrar` y cookie firmada.
 
-    La contraseña es la regla de la semilla: usuario + `1234`.
+    La contraseña es la regla de la semilla: usuario + `1234`. Recibe un
+    cliente ya abierto (dentro de un `with _cliente() as cliente:`) y
+    solo manda la petición de login.
     """
-    cliente = httpx.Client(base_url=URL_STAGING, timeout=SEGUNDOS, follow_redirects=False)
     respuesta = cliente.post("/entrar", data={"usuario": usuario, "contrasena": f"{usuario}1234"})
     assert respuesta.status_code == 303, (
         f"{usuario} no pudo entrar en {URL_STAGING}: {respuesta.status_code}. "
         "¿Está sembrado el staging con los datos sintéticos de la semilla?"
     )
-    return cliente
 
 
 def _vacante_de_northstar(cliente: httpx.Client) -> int:
@@ -104,7 +117,8 @@ def _vacante_de_northstar(cliente: httpx.Client) -> int:
 
 def test_marcus_abre_su_vacante_de_northstar_en_el_staging_con_la_columna_de_score() -> None:
     """Criterio 1 · 200 y columna de score en el staging desplegado."""
-    with _entrar(USUARIO_NORTHSTAR) as cliente:
+    with _cliente() as cliente:
+        _entrar(cliente, USUARIO_NORTHSTAR)
         vacante_id = _vacante_de_northstar(cliente)
         respuesta = cliente.get(f"/vacantes/{vacante_id}")
 
@@ -121,10 +135,12 @@ def test_marcus_abre_su_vacante_de_northstar_en_el_staging_con_la_columna_de_sco
 
 def test_la_misma_vacante_de_northstar_con_sofia_de_meridian_responde_404() -> None:
     """Criterio 2 · multiempresa, con los mismos ids y en el staging de verdad."""
-    with _entrar(USUARIO_NORTHSTAR) as de_northstar:
+    with _cliente() as de_northstar:
+        _entrar(de_northstar, USUARIO_NORTHSTAR)
         vacante_id = _vacante_de_northstar(de_northstar)
 
-    with _entrar(USUARIO_MERIDIAN) as de_meridian:
+    with _cliente() as de_meridian:
+        _entrar(de_meridian, USUARIO_MERIDIAN)
         respuesta = de_meridian.get(f"/vacantes/{vacante_id}")
 
         assert respuesta.status_code == 404, (
