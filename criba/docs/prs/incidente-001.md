@@ -304,9 +304,14 @@ excluya del entorno del hijo en `VARIABLES_DEL_ANFITRION` (`cliente.py:97`).
 **Deciden Víctor y Tomás.**
 
 **3. Las 7 filas sucias siguen en la base del staging.** Se identifican por
-`score=0` con la razón «No se pudo evaluar automáticamente.»; hay que borrarlas y
-re-encolar los pares. Necesita el rol dueño de la base, que ni este PR ni el rol
-de producción tienen. Es operación, con dueño y fecha en el postmortem.
+`score=0` con la razón exacta «No se pudo evaluar automáticamente.»; hay que
+pasarlas a «sin score» y re-encolar los pares. Necesita el rol dueño de la
+base, que ni este PR ni el rol de producción tienen. Es operación, con dueño y
+fecha en el postmortem, y desde la ronda 1 de revisión (I2, abajo) ya no es un
+párrafo sin mecanismo: es `staging/remediar_incidente_001.sql`, filtrado por
+empresa y por la razón exacta, con un bloque de solo lectura para verificar el
+alcance antes de tocar nada y sin `COMMIT` automático. **Este PR no lo
+ejecuta.**
 
 **4. El postmortem, dentro de 48 h y sin nombres.** Lo que falló no es el 0: es
 que `8ee8160` entró sin un test que ejerciera el camino de error y que `8b594a9`
@@ -330,13 +335,84 @@ es la pregunta 2 de esta lista.
   «la celda dice tal cosa»: el texto todavía no existe.
 - **Cualquier control sobre el tope de tokens (F7):** bloqueado en una decisión de
   Víctor con Tomás, pregunta 2 de arriba.
-- **Limpiar las 7 filas y reiniciar los procesos del staging:** operación, no
-  código. Pregunta 3 de arriba.
+- **Correr `staging/remediar_incidente_001.sql` y reiniciar los procesos del
+  staging:** operación, no código. El script se escribe y se declara aquí; lo
+  corre el rol dueño. Pregunta 3 de arriba.
 - **La migración de `estado_trabajo`.** El `error` con el que cierra este camino
   es uno de los cuatro valores que la 0001 admite; añadir un estado nuevo es
   migración y decisión, y las dos son de PR-14.
 - **Nada en `docs/decisiones.md`, `SPEC.md` ni `PLAN.md`.** Este PR no cambia
   ninguna decisión: aplica CA13, que ya estaba escrita desde la spec.
+
+## Ronda 1 de revisión (revisor-pr, confianza 86, veredicto «corregir»)
+
+Tres hallazgos. Los tres resueltos; ninguno rechazado sin dejar algo escrito.
+
+**I2 — corregido.** La remediación de los 7 ceros falsos no tenía mecanismo,
+solo el párrafo 3 de «Qué queda abierto». Ahora es
+`staging/remediar_incidente_001.sql` (commit `herramientas:` de esta ronda):
+filtrado por `empresa_id` y por la razón exacta (comparación `=`, no `ILIKE`,
+para no arrastrar otro motivo que empiece igual), con un bloque de solo
+lectura primero para verificar que son 7 filas antes de tocar nada, y la
+remediación en una transacción sin `COMMIT` automático. Pasa las filas sucias
+a «sin score» con motivo (CA13) y reabre a `pendiente` el trabajo en `error`
+del mismo par —no inserta uno nuevo: `uq_match_trabajos_idempotencia`
+(`empresa_id`, `clave_idempotencia`) chocaría con el que ya existe para ese
+CV—. **Este PR no lo ejecuta**: lo corre el rol dueño, y queda en el
+postmortem con su fecha. Un score bueno que el bug haya pisado no tiene
+vuelta: no existe en la base, y el script no finge que la tiene.
+
+**M1 — bloqueado, no corregido.** La instrucción pedía anotarlo como pregunta
+abierta de PR-14 **en `PLAN.md`**. El propio rol de constructor tiene escrito,
+en su definición (`.claude/agents/constructor.md`): «Lo que NO haces, aunque
+te deje en verde: … editar `docs/decisiones.md`, `SPEC.md` o `PLAN.md`», sin
+excepción para «es solo anotar una pregunta». Editar `PLAN.md` desde esta
+sesión viola esa regla con la misma letra con la que esta sesión les exige a
+los hallazgos I1/I2 no ampliar el alcance por su cuenta. No lo hice. Lo que
+M1 señala **ya está escrito** —no en `PLAN.md`, pero sí en el repo, por dos
+caminos que no necesitan tocar ese archivo—: el comentario del camino de
+excepción en `app/match/cola/ejecutor.py` (línea ~118, «Pregunta abierta, de
+PR-14 y no de aquí: qué ve el reclutador mientras tanto») y el punto 1 de
+«Qué queda abierto» de este mismo documento. Si la pregunta tiene que vivir
+también en `PLAN.md` §9 como una fila nueva (junto a la 7, la de F7), es un
+cambio de ese archivo y lo decide quien pueda editarlo —el rol de producción
+o un PR dedicado a `PLAN.md`—, no el constructor de este PR.
+
+**I1 — decidido.** El hallazgo es real: el commit `6a15acd` mezcla el arreglo
+de código (`ejecutor.py`) y el de `staging/staging.env` en una sola pieza, así
+que revertir uno sin el otro no es un solo comando. La forma más limpia de
+corregirlo sería separar ese commit en dos con un `git reset --soft` seguido
+de dos commits nuevos; **esta sesión no lo hizo** porque la herramienta de
+este entorno bloquea `git reset` sin aprobación interactiva, y no hay forma de
+dar esa aprobación desde aquí sin arriesgar una reescritura a ciegas de una
+rama que no es mía en exclusiva. Reescribir historia no es la única forma de
+resolver «por qué importa» (la reversión ambigua): **la resolución que sí
+puedo hacer sin tocar el historial es documentar aquí mismo, explícitamente,
+el camino de reversión parcial de cada pieza**, para que nadie tenga que
+adivinarlo ni revertir las dos juntas:
+
+```bash
+# revertir SOLO el código del ejecutor (deja staging.env como está):
+git checkout 6a15acd^ -- app/match/cola/ejecutor.py
+
+# revertir SOLO el cambio de staging.env (deja ejecutor.py como está):
+git checkout 6a15acd^ -- staging/staging.env
+```
+
+Y la recomendación para el siguiente incidente con dos causas, para que esto
+no se repita: el arreglo de código y el de operación van en **commits
+separados desde el primer intento** (uno por causa, como `RUNBOOK.md` §3
+pide), no en una sola pieza declarada en dos filas de una tabla. Sobre si el
+cambio de `staging.env` debería haber entrado por un PR de código en absoluto
+en vez de solo quedar anotado en el postmortem (la lectura más estricta de
+`RUNBOOK.md` §3, «si el arreglo es de operación … va al postmortem con dueño y
+fecha»): se queda en el PR, con esta justificación — a diferencia de exportar
+una variable a mano o reiniciar un proceso (los ejemplos de esa frase),
+`staging.env` es un archivo **versionado** del repo, y el valor que se quita
+lo puso un commit normal (`8b594a9`, «staging: tope de tokens…», sin pasar por
+ningún postmortem); tratarlo distinto solo porque esta vez el valor era
+incorrecto —en lugar de una decisión que alguien pueda discutir— trataría el
+canal de corrección como más estricto que el canal del error.
 
 ## Dependencias
 
@@ -354,11 +430,42 @@ es la pregunta 2 de esta lista.
 - `PLAN.md` §3 PR-11 (objetivo, tabla de estados y criterio «ningún camino que
   escriba `score = 0`»), §8 (CA6 y CA13 → PR-11), §9 pregunta 7 (F7, Víctor con
   Tomás), §6 (esta plantilla).
-- `RUNBOOK.md` §3 («dos causas en un arreglo son dos arreglos») y §4 (qué
-  verificar antes de reencender).
+- `RUNBOOK.md` §3 («dos causas en un arreglo son dos arreglos», «si el arreglo
+  es de operación … va al postmortem con dueño y fecha») y §4 (qué verificar
+  antes de reencender).
 - Diagnóstico de la sesión de triage del incidente 001 (rol de producción,
   22-nov-2026): las tres hipótesis, las refutaciones y el alcance.
 - Commits sembrados a propósito: `8ee8160` (el cero) y `8b594a9` (el tope de
   tokens).
+- Ronda 1 de revisión (revisor-pr, 26-nov-2026, confianza 86): hallazgos I1,
+  I2, M1, resueltos arriba. `.claude/agents/constructor.md` (la regla que
+  bloquea M1) y `staging/remediar_incidente_001.sql` (I2).
+
+## Salida real · verificación de esta ronda
+
+Ningún test se tocó y ningún archivo de `app/` cambió en esta ronda (solo
+`staging/remediar_incidente_001.sql`, nuevo, y este documento). `poe check`
+antes y después de los commits de la ronda 1 es el mismo, **225 passed, 2
+skipped, 1 xfailed**, porque la remediación de datos es un script que nadie
+ejecuta en CI y no hay test nuevo que ejerza este archivo:
+
+```
+$ uv run python -m poethepoet check
+Poe => python -m ruff check .
+All checks passed!
+Poe => python -m ruff format --check .
+160 files already formatted
+Poe => python -m pytest
+........................................................................ [ 31%]
+........................................................................ [ 63%]
+..................x.....................................ss.............. [ 94%]
+............                                                             [100%]
+============================== warnings summary ===============================
+tests/e2e/test_humo.py::test_guion_1_un_cv_subido_se_puntua_con_el_mock_y_la_reclutadora_ve_el_score[chromium]
+  …/_pytest/fixtures.py:1392: PytestRemovedIn10Warning: Session-scoped fixtures defined as instance methods are deprecated.
+  …
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+225 passed, 2 skipped, 1 xfailed, 1 warning in 10.31s
+```
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
