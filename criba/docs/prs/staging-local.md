@@ -114,7 +114,7 @@ su propio punto de entrada | ninguno: es solo quién lo invoca»).
 
 ## Tests primero
 
-Los escribió el escritor de tests en `4d4c884`, antes de que existiera una línea
+Los escribió el escritor de tests en el commit «test: metricas sin datos personales, rol del agente y humo del staging», antes de que existiera una línea
 de este código. 23 tests, uno por criterio:
 
 - `tests/staging/test_metricas_sin_datos_personales.py` (9) → CA2, CA13, CA16, D15, F12, D4/CA1
@@ -415,4 +415,4 @@ vista.
 - `docs/decisiones.md` · D3 modificado, D4, D5, D7, D12, D15, D16
 - `SPEC.md` · CA1, CA2, CA3, CA7, CA13, CA16
 - `PLAN.md` · regla 1.7, §4, §9 pregunta abierta 11
-- `tests/staging/` · los 23 tests de `4d4c884`
+- `tests/staging/` · los 23 tests de el commit «test: metricas sin datos personales, rol del agente y humo del staging»
