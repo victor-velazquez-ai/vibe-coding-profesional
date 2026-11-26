@@ -172,6 +172,8 @@ código, va por PR con su test, como todo lo demás (`PLAN.md` §4: el test fall
 antes del cambio). Si el arreglo es de operación —una variable, un reinicio, un
 rol— va al postmortem con dueño y fecha.
 
+**Un error nunca se guarda como dato** (incidente 001): un fallo del proveedor no es un score 0. El trabajo queda en `error` con su motivo y la vista no muestra número. Si un camino de error escribe un valor «para que no quede vacío», es el bug, no el arreglo.
+
 Si durante el arreglo aparece una segunda causa, se vuelve al paso 1 con el
 incidente nuevo. Dos causas en un arreglo son dos arreglos.
 
