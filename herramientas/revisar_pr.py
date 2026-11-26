@@ -103,13 +103,14 @@ def main() -> None:
     run("git", "worktree", "add", "-q", "--detach", str(copia), "FETCH_HEAD")
     try:
         p = subprocess.run(
-            [claude_exe(), "-p", prompt, "--model", a.model, "--output-format", "json",
+            [claude_exe(), "-p", "--model", a.model, "--output-format", "json",
              "--tools", "Read,Grep,Glob", "--allowedTools", "Read", "Grep", "Glob",
              "--json-schema", json.dumps(ESQUEMA),
              "--setting-sources", "", "--strict-mcp-config",
              "--no-session-persistence", "--max-budget-usd", a.max_usd],
-            cwd=copia, env=env, capture_output=True, text=True, encoding="utf-8",
-            stdin=subprocess.DEVNULL,
+            # El prompt va por la entrada estándar: un diff grande no cabe en la línea de
+            # órdenes de Windows (WinError 206), y en argv lo vería cualquier proceso.
+            input=prompt, cwd=copia, env=env, capture_output=True, text=True, encoding="utf-8",
         )
     finally:
         run("git", "worktree", "remove", "--force", str(copia))
