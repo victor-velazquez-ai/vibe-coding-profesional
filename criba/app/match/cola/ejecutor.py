@@ -20,6 +20,10 @@ del repositorio que `encolar` llama antes del `INSERT`.
 
 from __future__ import annotations
 
+import json
+import logging
+import time
+
 from sqlalchemy.orm import Session
 
 from app.match.cola.trabajos import tomar
@@ -27,6 +31,7 @@ from app.match.configuracion import Proveedor, ajustes_match
 from app.match.proveedor.cliente import proveedor_configurado
 from app.match.repositories.contexto import ContextoDeEmpresa
 from app.match.repositories.match_repo import RepositorioDeMatch
+from app.match.repositories.modelos import TrabajoDeMatch
 from app.match.services.scoring import MatchService
 
 LARGO_DEL_MOTIVO = 120
@@ -34,6 +39,13 @@ LARGO_DEL_MOTIVO = 120
 # no un «sin score» que se le muestre al reclutador (eso es CA13, PR-11): aquí no
 # hay nada que decirle al candidato, hay una empresa sin anexo firmado.
 SIN_ACTIVACION = "empresa_sin_activacion"
+
+# La línea de log del camino de escritura, la pareja de `LOG_DEL_LISTADO`
+# (`services/listado.py`) para el camino de lectura.
+LOG_DEL_EJECUTOR = "app.match.cola.ejecutor"
+EVENTO_DE_CIERRE = "match.trabajo_cerrado"
+
+_log = logging.getLogger(LOG_DEL_EJECUTOR)
 
 
 async def una_pasada(bd: Session, proveedor: Proveedor | None = None) -> int:
@@ -45,6 +57,7 @@ async def una_pasada(bd: Session, proveedor: Proveedor | None = None) -> int:
     """
     if not ajustes_match().activo:
         return 0
+    comienzo = time.perf_counter()
     trabajo = tomar(bd)
     if trabajo is None:
         return 0
@@ -64,7 +77,7 @@ async def una_pasada(bd: Session, proveedor: Proveedor | None = None) -> int:
         # —y si PR-14 debe reintentarlo— es **pregunta abierta** de este paso:
         # `estado_trabajo` solo admite los cuatro valores de la 0001 y PR-10 no
         # trae migración. Lo único que no puede ser es `listo`: nadie lo puntuó.
-        repo.marcar_trabajo(trabajo.id, "error", motivo=SIN_ACTIVACION)
+        _registrar_cierre(repo.marcar_trabajo(trabajo.id, "error", motivo=SIN_ACTIVACION), comienzo)
         return 1
 
     repo.marcar_trabajo(trabajo.id, "en_curso")
@@ -88,10 +101,52 @@ async def una_pasada(bd: Session, proveedor: Proveedor | None = None) -> int:
         # modo rige en cada entorno es precondición de la operación de PR-16.
         await MatchService(repo, proveedor or proveedor_configurado()).puntuar(trabajo)
     except Exception as exc:  # el motivo queda en la fila, no en un log con PII
-        repo.marcar_trabajo(trabajo.id, "error", motivo=type(exc).__name__[:LARGO_DEL_MOTIVO])
+        fallido = repo.marcar_trabajo(
+            trabajo.id, "error", motivo=type(exc).__name__[:LARGO_DEL_MOTIVO]
+        )
+        _registrar_cierre(fallido, comienzo)
         return 1
-    repo.marcar_trabajo(trabajo.id, "listo")
+    _registrar_cierre(repo.marcar_trabajo(trabajo.id, "listo"), comienzo)
     return 1
+
+
+def _registrar_cierre(trabajo: TrabajoDeMatch, comienzo: float) -> None:
+    """**Una línea JSON por trabajo cerrado**, y nada del candidato (F12, CA1, D15).
+
+    Los seis campos son los que `docs/arquitectura.md` §2 autoriza a salir de
+    Criba leídos para el camino de escritura: los identificadores que **no** son
+    del candidato —el trabajo, la empresa y la vacante—, la decisión (`estado` y
+    `motivo`) y la latencia. Ni `candidato_id`, ni correo, ni hash de CV, ni
+    score: el score es dato derivado del candidato y en un log no tiene nada que
+    hacer, que es la mitad «ni log suyo» de CA1 (R6·M6) y lo que
+    `services/listado.py` ya hace en el camino de lectura.
+
+    El `motivo` entra porque está acotado por construcción: o es
+    `empresa_sin_activacion`, o es el **nombre del tipo** de la excepción cortado
+    a 120 caracteres. Nunca el mensaje: ese es el camino de F12 por el que el
+    `stderr` del CLI del proveedor —con el prompt dentro— llega a un archivo.
+
+    `ms` es la latencia **de la pasada**: desde que se toma la fila hasta que se
+    cierra. No es la de D16/T2 (CV recibido → score guardado), que necesita el
+    `creado_en` del trabajo y se mira en `metricas.trabajos_por_estado`.
+
+    Es `info` y es una sola línea: el ejecutor del staging da vueltas cada pocos
+    segundos y un log por pasada vacía no se podría leer. Las pasadas sin trabajo
+    no registran nada.
+    """
+    _log.info(
+        json.dumps(
+            {
+                "evento": EVENTO_DE_CIERRE,
+                "trabajo_id": trabajo.id,
+                "empresa_id": trabajo.empresa_id,
+                "vacante_id": trabajo.vacante_id,
+                "estado": trabajo.estado,
+                "motivo": trabajo.motivo,
+                "ms": round((time.perf_counter() - comienzo) * 1000, 1),
+            }
+        )
+    )
 
 
 async def pasadas(bd: Session, proveedor: Proveedor | None = None, maximo: int = 100) -> int:
