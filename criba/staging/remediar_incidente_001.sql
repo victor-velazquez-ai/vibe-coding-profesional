@@ -87,7 +87,7 @@ SET
     score = NULL,
     razones = '[]'::jsonb,
     estado = 'sin_score',
-    motivo_sin_score = 'Remediación incidente 001: el score era un cero falso del camino de excepción, no un score calculado. Re-encolado para puntuarse de nuevo.',
+    motivo_sin_score = 'Incidente 001: era un cero falso del camino de error, no un score. Reencolado.',
     actualizado_en = now()
 FROM sucias
 WHERE s.id = sucias.id
@@ -106,7 +106,7 @@ WITH afectados AS (
     WHERE empresa_id = :empresa_id
         AND score IS NULL
         AND estado = 'sin_score'
-        AND motivo_sin_score = 'Remediación incidente 001: el score era un cero falso del camino de excepción, no un score calculado. Re-encolado para puntuarse de nuevo.'
+        AND motivo_sin_score = 'Incidente 001: era un cero falso del camino de error, no un score. Reencolado.'
 )
 UPDATE match_trabajos AS t
 SET
