@@ -2,10 +2,10 @@
 
     uv run --env-file staging/staging.env python -m app.match.comandos.ejecutor
 
-Corre `pasadas` en bucle cada pocos segundos hasta que alguien lo pare con
-Ctrl+C. Nada más: el bucle, los reintentos, el lease y la concurrencia siguen
-viviendo en `app/match/cola/ejecutor.py` (PR-06, PR-14, PR-15). Este módulo es
-**quién lo invoca**, y solo eso.
+Corre `una_pasada` en bucle —hasta vaciar la cola y a esperar unos segundos—
+hasta que alguien lo pare con Ctrl+C. Nada más: los reintentos, el lease y la
+concurrencia siguen viviendo en `app/match/cola/ejecutor.py` (PR-06, PR-14,
+PR-15). Este módulo es **quién lo invoca**, y solo eso.
 
 **Esto no cambia lo que ADR-001 decide para producción.** La Decisión 2 de
 ADR-001 dice «el ejecutor corre en el proceso web», y sigue siendo así: el gancho
@@ -43,7 +43,7 @@ import asyncio
 from sqlalchemy.orm import Session
 
 from app.db import motor
-from app.match.cola.ejecutor import pasadas
+from app.match.cola.ejecutor import una_pasada
 from app.match.configuracion import ajustes_match
 from app.registro import configurar_logs
 
@@ -55,19 +55,28 @@ SEGUNDOS_ENTRE_VUELTAS = 5.0
 
 
 async def bucle(intervalo: float = SEGUNDOS_ENTRE_VUELTAS) -> None:
-    """`pasadas` y a esperar, para siempre. Lo para Ctrl+C.
+    """`una_pasada` hasta vaciar la cola y a esperar. Lo para Ctrl+C.
 
-    **Una sesión por vuelta, con su `commit()`.** No es un detalle: una sesión
-    viva durante horas mantiene abierta una transacción, y una transacción abierta
-    sobre `candidatos` es exactamente lo que F16 cuenta —la migración que se queda
-    esperando— y lo que haría que las vistas de `metricas` leyeran una foto vieja.
-    Es la misma forma que usa `crear_sesion` en la app: una sesión por unidad de
+    **Una sesión por trabajo, con su `commit()` antes de tomar el siguiente.**
+    No es un detalle: con el proveedor real una pasada tarda lo que tarde el
+    CLI, y encadenar varias dentro de una sola transacción (lo que hacía
+    `pasadas(bd)` con su `maximo=100` por omisión) la deja abierta durante toda
+    la tanda. Eso es exactamente lo que F16 cuenta —la migración que se queda
+    esperando—, mantiene tomadas con `FOR UPDATE SKIP LOCKED` las filas de toda
+    la tanda, hace que `metricas.trabajos_por_estado` y la alerta de pendientes
+    >60 min de CA7 vean como `pendiente` un trabajo que ya se puntuó, y si el
+    proceso muere a mitad se pierde el trabajo de toda la tanda aunque el gasto
+    contra el techo de D12 ya se haya hecho. Por eso aquí no se usa `pasadas`:
+    cada trabajo abre su propia sesión y hace su propio `commit()`, que es la
+    misma forma que usa `crear_sesion` en la app, una sesión por unidad de
     trabajo.
     """
     while True:
-        with Session(motor(), expire_on_commit=False) as bd:
-            await pasadas(bd)
-            bd.commit()
+        hubo_trabajo = True
+        while hubo_trabajo:
+            with Session(motor(), expire_on_commit=False) as bd:
+                hubo_trabajo = bool(await una_pasada(bd))
+                bd.commit()
         await asyncio.sleep(intervalo)
 
 

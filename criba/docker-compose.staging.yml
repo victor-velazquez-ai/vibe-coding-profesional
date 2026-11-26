@@ -12,7 +12,8 @@
 # `roles.sql` se monta en `/docker-entrypoint-initdb.d/` y corre **al
 # inicializar el volumen**, como dueño de la base: ahí nacen `criba_app` y
 # `agente_metricas`. Las migraciones NO corren aquí: las corre el dueño después,
-# con `poe staging-migrar`, porque `criba_app` no puede hacer DDL.
+# con `poe staging-arriba` (levanta el contenedor y migra en el mismo paso),
+# porque `criba_app` no puede hacer DDL.
 #
 # El guion es idempotente, así que se puede volver a correr sobre un volumen ya
 # inicializado (el orden está en `RUNBOOK.md`).
