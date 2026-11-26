@@ -101,6 +101,15 @@ async def una_pasada(bd: Session, proveedor: Proveedor | None = None) -> int:
         # modo rige en cada entorno es precondición de la operación de PR-16.
         await MatchService(repo, proveedor or proveedor_configurado()).puntuar(trabajo)
     except Exception as exc:  # el motivo queda en la fila, no en un log con PII
+        # Mientras PR-14 decide los reintentos, que el candidato no se quede sin fila
+        # en la vista de la vacante: se guarda con score 0 y la razón.
+        repo.guardar_score(
+            trabajo.candidato_id,
+            trabajo.vacante_id,
+            0,
+            ("No se pudo evaluar automáticamente.",),
+            idioma=trabajo.idioma,
+        )
         fallido = repo.marcar_trabajo(
             trabajo.id, "error", motivo=type(exc).__name__[:LARGO_DEL_MOTIVO]
         )
