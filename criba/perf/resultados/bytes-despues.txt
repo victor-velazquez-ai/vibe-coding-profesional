@@ -1,0 +1,15 @@
+Base: postgresql+pg8000://criba:criba@localhost:5444/criba_perf
+Petición: marcus GET /vacantes/1, en proceso con TestClient. 20 repeticiones por cabecera, 5 de calentamiento.
+
+    Accept-Encoding      en el cable      cuerpo    Content-Encoding    p50 ms   p95 ms
+    -----------------------------------------------------------------------------------
+    identity                 838,619     838,619           (ninguna)      52.4     76.3
+    gzip                      27,321     838,619                gzip      63.3     66.6
+
+    ahorro de gzip: 811,298 bytes (96.7 % de 838,619)
+    coste de comprimir, techo: p50 +10.9 ms, p95 -9.7 ms (incluye la descompresión del cliente)
+    filas renderizadas en las dos respuestas: 500
+
+    las dos mitades de ese techo, cronometradas aparte sobre el mismo cuerpo:
+      gzip.compress(cuerpo, compresslevel=9)       11.8 ms   → 27,321 bytes · lo paga el servidor
+      gzip.decompress(comprimido)                   0.7 ms   lo paga el navegador

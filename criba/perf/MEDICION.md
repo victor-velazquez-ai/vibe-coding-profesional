@@ -428,93 +428,60 @@ contra código que nadie había previsto, que es justo para lo que se puso.
 
 ## 10 · Después del PR-PERF-1
 
-Fecha: 22-nov-2026. Sesión de medición posterior a la implementación del PR-PERF-1.
+22-nov-2026. Mismo entorno que §2: la misma máquina, el servidor de medición de un worker en `:8046` y la base `criba_perf` con los mismos 500 candidatos.
 
-### 10.1 · Comparativa de latencia (Locust, 50 peticiones por corrida)
+**Qué se midió, con qué código y con qué comando.** Se declara porque mezcla dos momentos:
 
-| Escenario | Métrica | Antes | Después | Delta | % |
+| Medida | Archivo | Comando | Código medido |
+|---|---|---|---|
+| carga con locust | `perf/resultados/despues*.csv` | los de §9, con `--csv perf/resultados/despues…` | PR-PERF-1 antes de la corrección de la ronda 1 |
+| en proceso, por fases | `perf/resultados/perfil-despues.txt` | `uv run --with locust python -m perf.perfil` | el mismo |
+| bytes con y sin gzip | `perf/resultados/bytes-despues.txt` | `uv run python -m perf.bytes_de_la_vista` | el mismo |
+
+- El cliente de locust manda `Accept-Encoding: gzip`, así que las corridas de después **ya van comprimidas**: miden los cambios nº 1 y nº 3 **juntos**.
+- La corrección de la ronda 1 (M1: proyectar `Candidato.tiene_cv`) añade una columna booleana a la consulta de la lista. **No se volvió a medir.**
+
+### 10.1 · Carga con locust: los mismos tres escenarios de §3.1
+
+| Corrida | Peticiones | Fallas | p50 | p95 | p99 |
 |---|---|---|---|---|---|
-| **1 usuario, 2 min** | p50 | 69 ms | 66 ms | −3 ms | −4.3% |
-| | p95 | **110 ms** | **98 ms** | −12 ms | −10.9% |
-| | p99 | 160 ms | 110 ms | −50 ms | −31.3% |
-| | promedio | 75.9 ms | 70.9 ms | −5.0 ms | −6.6% |
-| **5 usuarios (referencia)** | p50 | 75 ms | 69 ms | −6 ms | −8.0% |
-| | p95 | **180 ms** | **140 ms** | −40 ms | −22.2% |
-| | p99 | 320 ms | 260 ms | −60 ms | −18.8% |
-| | promedio | 92.4 ms | 80.4 ms | −12.0 ms | −13.0% |
-| **10 usuarios, 1 min** | p50 | 78 ms | 70 ms | −8 ms | −10.3% |
-| | p95 | **220 ms** | **170 ms** | −50 ms | −22.7% |
-| | p99 | 530 ms | 660 ms | +130 ms | +24.5% |
-| | promedio | 107.0 ms | 98.4 ms | −8.6 ms | −8.0% |
+| 1 usuario, 2 min | 55 → 61 | 0 → 0 | 69 → 66 ms | **110 → 98 ms** | 160 → 110 ms |
+| 5 usuarios, 1 min | 152 → 138 | 0 → 0 | 75 → 69 ms | **180 → 140 ms** | 320 → 260 ms |
+| 10 usuarios, 1 min | 280 → 290 | 0 → 0 | 78 → 70 ms | **220 → 170 ms** | 530 → 660 ms |
 
-Cero fallas en todas las corridas. Criterio de CA5: **todas dentro de 300 ms en p95**.
+CA5 (p95 < 300 ms) se cumple en las seis corridas. El p99 con 10 usuarios empeoró (530 → 660 ms). Con una corrida de un minuto por lado no se puede separar un cambio de ruido, así que no se interpreta.
 
-### 10.2 · Bytes de la respuesta
+### 10.2 · Bytes de la vista
 
-| Medida | Antes | Después | Delta | % |
-|---|---|---|---|---|
-| Sin comprimir (HTTP identity) | 1.597.568 | 838.619 | −758.949 | −47.5% |
-| Con gzip | ~150 KB (est.) | 27.321 | −122.679 | −81.8% |
+| Medida | Antes (§3.1) | Después (`bytes-despues.txt`) |
+|---|---|---|
+| Cuerpo, sin comprimir | 1.597.568 | **838.619** (−47,5 %) |
+| En el cable, con `Accept-Encoding: gzip` | 1.597.568 (antes no había compresión) | **27.321** |
 
-La reducción en bytes sin comprimir corresponde exactamente al **cambio nº 1** de §6:
-*no traer `cv_texto` en la lista*. El texto del CV (542.091 caracteres de 500 filas)
-no se envía al cliente, que lo carga por HTMX al abrir un `<details>` si lo necesita.
+De los 758.949 bytes que bajó el cuerpo, 542.091 son el texto de los CV (§5.2). El resto es el formulario del CV que cada fila llevaba dentro y que ahora llega con el editor, cuando se pide.
 
-Con gzip, el HTML altamente repetitivo (500 filas idénticas en estructura) comprime de
-838 KB a 27 KB (96.7 % de reducción).
+### 10.3 · En proceso, por fases (40 muestras, `perfil-despues.txt` contra §3.2)
 
-### 10.3 · Medidas por fase (SQL, render, bytes) [Pendiente: profiler.py]
+| Fase | Antes p50 / p95 | Después p50 / p95 |
+|---|---|---|
+| total | 62,7 / 109,1 ms | 64,6 / 88,4 ms |
+| SQL | 37,2 / 43,9 ms | 30,4 / 38,9 ms |
+| render | 9,6 / 11,6 ms | 6,8 / 9,2 ms |
+| resto | 16,1 / 19,8 ms | 27,1 / 37,4 ms |
 
-La ejecutar `uv run python -m perf.perfil` con y sin `Accept-Encoding: gzip`:
-- **SQL** (en proceso): p50, p95, p99 (en ms)
-- **Render** (Jinja): p50, p95, p99 (en ms)
-- **Consultas por petición**: verificar que no hay N+1
-- **Composición del cuerpo**: desglose de qué se envía
+- **Consultas:** 5 por petición antes y 5 después, sin ninguna sentencia repetida.
+- **La consulta de la lista:** `candidatos_de_vacante` pasó de 19,5 ms (§5.1) a 12,2 ms. §6 estimaba 8,7 ms; el medido es 12,2.
+- **El `resto` sube 11 ms, y es la compresión.** `bytes-despues.txt` la cronometra aparte: `gzip.compress` del cuerpo de 838.619 bytes cuesta 11,8 ms en el servidor, y descomprimir, 0,7 ms en el cliente.
 
-*Nota: Las mediciones en proceso se ejecutarán sin `loopback` ni competencia del
-generador de carga, igual que en la anterior.*
+### 10.4 · Qué movió y qué no
 
-### 10.4 · Resumen
+- **Movió:**
+  - el p95 con carga: 180 → 140 ms con 5 usuarios y 220 → 170 ms con 10;
+  - los bytes en el cable: de 1,6 MB a 27 KB;
+  - en proceso, la fase SQL (−6,8 ms en el p50) y el render (−2,8 ms).
+- **No movió el p50 total en proceso** (62,7 → 64,6 ms): lo que se ahorró en SQL y render se lo comió comprimir. La ganancia está en el cable, que es lo que pesa en un celular.
+- **No se midió:**
+  - el objetivo «< 2 s en celular con buena red», que según `SPEC.md` es una medición manual antes de la demo;
+  - la corrección M1.
 
-| Aspecto | Resultado |
-|---|---|
-| **¿Cumple CA5 (p95 < 300 ms)?** | **SÍ**, todas las corridas. Margen mejorado a ~2,2× en 5 usuarios |
-| **¿Se movió el p95 con carga?** | **Sí**: 1 usuario: −12 ms; 5 usuarios: −40 ms (referencia); 10 usuarios: −50 ms |
-| **Mejor escenario** | 10 usuarios: p95 220 → 170 ms (−50 ms, −22.7 %) |
-| **Peor escenario (p99 a 10 usuarios)** | p99 crece de 530 a 660 ms con concurrencia mayor, pero p95 sigue siendo 170 ms |
-| **Bytes en el cable** | Reducción del 47.5 % sin comprimir; 96.7 % con gzip |
-| **Objetivo celular: < 2 s en móvil buena red** | Mejora dramática: de ~1,3 s a ~0,22 s solo en transferencia (838 KB → 27 KB con gzip) |
-
-### 10.5 · Qué cambió
-
-**El PR-PERF-1 implementó el cambio nº 1 de §6:**
-
-- `_candidatos.html` no trae `cv_texto` en cada fila de la lista
-- El editor de CV se carga por HTMX (`<details>` cerrado por defecto)
-- Repositorio: método nuevo para traer candidatos sin el texto del CV
-- Resultado: **−12 ms p50, −50 ms p95 a 10 usuarios, −758 KB de cuerpo**
-
-**Lo que NO cambió:**
-- Número de consultas SQL por petición: sigue siendo 5 (una consulta para toda la lista)
-- Fase SQL: sin datos del profiler, pero estimado en torno a 38 ms (similar a antes)
-- El `<select>` de «añadir un candidato»: sigue trayendo el padrón entero en vacantes ≠ 1
-
-### 10.6 · Entorno de medición
-
-El mismo que en §2, 22-nov-2026. Base de datos `criba_perf`, 500 candidatos en vacante 1
-con 499 scores guardados.
-
-```
-uv run --with locust python -m perf.sembrar_carga
-uv run --with locust --with "urllib3>=2.2" locust -f perf/locustfile.py --headless \
-    --host http://127.0.0.1:8046 --csv perf/resultados/despues-1usuario --only-summary \
-    -u 1 -r 1 -t 2m
-uv run --with locust --with "urllib3>=2.2" locust -f perf/locustfile.py --headless \
-    --host http://127.0.0.1:8046 --csv perf/resultados/despues --only-summary \
-    -u 5 -r 5 -t 1m
-uv run --with locust --with "urllib3>=2.2" locust -f perf/locustfile.py --headless \
-    --host http://127.0.0.1:8046 --csv perf/resultados/despues-10usuarios --only-summary \
-    -u 10 -r 10 -t 1m
-```
-
-Rutas de resultados: `perf/resultados/despues*.csv` (Locust), `perf/resultados/despues*.html` (histórico).
+> Una versión anterior de esta sección comparaba contra un «antes con gzip» estimado, dos cifras no salían de ninguna tabla y una estimación de tiempo móvil no tenía medición detrás. La revisión del PR la bloqueó (ronda 1, B1) y se rehízo con solo números medidos y su comando.
