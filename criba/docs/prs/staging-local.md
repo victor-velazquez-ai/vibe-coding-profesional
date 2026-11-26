@@ -478,3 +478,22 @@ vista.
 - `SPEC.md` · CA1, CA2, CA3, CA7, CA13, CA16
 - `PLAN.md` · regla 1.7, §4, §9 pregunta abierta 11
 - `tests/staging/` · los 23 tests de el commit «test: metricas sin datos personales, rol del agente y humo del staging»
+
+## Seguimiento de la revisión adversarial
+
+La revisión de tu agente (`herramientas/revisar_pr.py`, comenta y no aprueba) corrió dos veces sobre este PR.
+
+**Primera revisión: 20 %, 1 bloqueante, 4 importantes, 3 menores.**
+- Bloqueante, **corregido**: el logger del listado (`criba.match.listado`) no llegaba al archivo del staging. Ahora está bajo `app.` y hay test (`tests/match/test_logs_de_staging.py`).
+- Sin tests para el registro, **corregido**: los tres tests de ese archivo.
+- El bucle del ejecutor encadenaba hasta 100 trabajos en una transacción, **corregido**: una sesión y un `commit()` por trabajo.
+- Evidencia desincronizada, **corregido**: el staging se levantó y el E2E de humo corrió contra él (2 passed).
+- Menores: `staging/metricas.py` y `CRIBA_URL_METRICAS` quedan declarados aquí; `poe staging-migrar` no existe (la migración va dentro de `staging-arriba`).
+
+**Segunda revisión: 55 %, 0 bloqueantes, 4 importantes, 3 menores.** Lo que queda fuera del alcance de este PR va a issues con su criterio de aceptación:
+- un agregado de un solo candidato no anonimiza: **#24** (bloquea producción, no el staging con datos sintéticos);
+- la suite crea roles LOGIN en el clúster de desarrollo: **#25**;
+- el bucle del ejecutor muere con el primer error de conexión: **#26**;
+- este apartado, que el cuerpo citaba y no existía, y el `.gitkeep` de `staging/logs/`: corregidos aquí.
+
+El merge lo decide una persona, con la CI en verde.
