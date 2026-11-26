@@ -9,7 +9,7 @@
 -- operación... va al postmortem con dueño y fecha»).
 --
 -- Qué arregla: los 7 pares candidato-vacante de `empresa_id` de Northstar a los
--- que el camino de excepción viejo (commit `8ee8160`, antes de este PR) les
+-- que el camino de excepción viejo (el commit «cola: si el proveedor falla, el candidato no se queda sin fila en la vista», antes de este PR) les
 -- escribió `match_scores.score = 0` con la razón exacta «No se pudo evaluar
 -- automáticamente.». Ese cero ya no lo escribe ningún camino de `app/`
 -- (`comportamiento: un fallo del proveedor nunca se convierte en un score`,
