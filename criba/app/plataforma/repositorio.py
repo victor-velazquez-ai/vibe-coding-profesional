@@ -47,11 +47,13 @@ class CandidatoDeLista:
     correo: str
     telefono: str
     largo_cv: int
-
-    @property
-    def tiene_cv(self) -> bool:
-        """Con el largo basta: es lo único que la lista sabe del CV."""
-        return self.largo_cv > 0
+    # El booleano viene **de la misma definición que el modelo**,
+    # `Candidato.tiene_cv`, contestada por Postgres sobre la fila que ya tiene
+    # (ver `candidatos_de_vacante`). No se deriva aquí de `largo_cv > 0`: un CV de
+    # solo espacios tiene largo y no es un CV, y la lista diría «3 caracteres»
+    # donde el resto de la aplicación dice «sin CV» (revisión de PR-PERF-1, ronda
+    # 1, M1).
+    tiene_cv: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,10 +115,14 @@ class RepositorioEmpresa:
         la plantilla no provoca una consulta por candidato.
 
         Del candidato se traen **solo las columnas que la lista pinta**, y del CV
-        solo su largo (`perf/MEDICION.md` §6 nº 1): la columna `cv_texto` es el
-        10,5 ms y los 542 KB que §5.1 y §5.2 miden, y la lista nunca mostró el
-        texto. `length()` lo cuenta en Postgres —que ya tiene la fila— y lo que
-        cruza a Python es un entero por fila.
+        solo lo que pinta de él: su largo y si lo tiene (`perf/MEDICION.md` §6 nº
+        1). La columna `cv_texto` es el 10,5 ms y los 542 KB que §5.1 y §5.2
+        miden, y la lista nunca mostró el texto. Las dos cosas las calcula
+        Postgres —que ya tiene la fila— y lo que cruza a Python es un entero y un
+        booleano por fila.
+
+        `Candidato.tiene_cv` se proyecta **tal cual**, como expresión: es la
+        definición del modelo, no una copia suya (ronda 1, M1).
         """
         filas = self._s.execute(
             select(
@@ -125,6 +131,7 @@ class RepositorioEmpresa:
                 Candidato.correo,
                 Candidato.telefono,
                 func.coalesce(func.length(Candidato.cv_texto), 0),
+                Candidato.tiene_cv,
                 Postulacion,
                 _conteo_notas(),
             )
@@ -144,11 +151,21 @@ class RepositorioEmpresa:
                     correo=correo,
                     telefono=telefono,
                     largo_cv=largo_cv,
+                    tiene_cv=tiene_cv,
                 ),
                 postulacion=postulacion,
                 notas=notas,
             )
-            for id_candidato, nombre, correo, telefono, largo_cv, postulacion, notas in filas
+            for (
+                id_candidato,
+                nombre,
+                correo,
+                telefono,
+                largo_cv,
+                tiene_cv,
+                postulacion,
+                notas,
+            ) in filas
         ]
 
     def candidato(self, candidato_id: int) -> Candidato | None:
