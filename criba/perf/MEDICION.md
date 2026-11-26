@@ -449,6 +449,16 @@ contra código que nadie había previsto, que es justo para lo que se puso.
 | 5 usuarios, 1 min | 152 → 138 | 0 → 0 | 75 → 69 ms | **180 → 140 ms** | 320 → 260 ms |
 | 10 usuarios, 1 min | 280 → 290 | 0 → 0 | 78 → 70 ms | **220 → 170 ms** | 530 → 660 ms |
 
+Las líneas de `GET /vacantes/{id}` de los tres CSV de después (22-nov), tal cual (`Type,Name,Request Count,Failure Count,Median,Average,Min,Max,Average Content Size,Requests/s,Failures/s,50%,66%,75%,80%,90%,95%,98%,99%,99.9%,99.99%,100%`):
+
+```
+despues-1usuario_stats.csv   GET,/vacantes/{id},61,0,66,70.91260492252033,58.37790004443377,108.47059998195618,838619.0,0.5153296446262486,0.0,66,72,75,76,88,98,98,110,110,110,110
+despues_stats.csv            GET,/vacantes/{id},138,0,69,80.42519202327652,58.53959999512881,275.6948999594897,838619.0,2.345582814589953,0.0,69,76,84,88,100,140,250,260,280,280,280
+despues-10usuarios_stats.csv GET,/vacantes/{id},290,0,70,…,838619.0,…,70,…,170,…,660,…
+```
+
+`Average Content Size` = 838.619 en las tres: locust reporta el cuerpo **ya descomprimido**. Los bytes en el cable están en §10.2.
+
 CA5 (p95 < 300 ms) se cumple en las seis corridas. El p99 con 10 usuarios empeoró (530 → 660 ms). Con una corrida de un minuto por lado no se puede separar un cambio de ruido, así que no se interpreta.
 
 ### 10.2 · Bytes de la vista
@@ -485,3 +495,15 @@ De los 758.949 bytes que bajó el cuerpo, 542.091 son el texto de los CV (§5.2)
   - la corrección M1.
 
 > Una versión anterior de esta sección comparaba contra un «antes con gzip» estimado, dos cifras no salían de ninguna tabla y una estimación de tiempo móvil no tenía medición detrás. La revisión del PR la bloqueó (ronda 1, B1) y se rehízo con solo números medidos y su comando.
+
+### 10.5 · La misma medición, con la máquina ocupada (26-nov)
+
+El 26-nov, al repetir las corridas sobre el código final, la misma máquina estaba renderizando video en otro proceso. **Mismo código, mismo comando, mismos datos:**
+
+| Corrida | 22-nov, máquina libre | 26-nov, con un render al lado |
+|---|---|---|
+| 1 usuario · p95 | 98 ms | 150 ms |
+| 5 usuarios · p95 | 140 ms | **340 ms**, fuera del presupuesto |
+
+Ninguno de los dos números es «el» p95 de Criba. Por eso el entorno va escrito junto al número (§2), y por eso esta sección no reemplaza a §10.1: la corrida del 26-nov no cumple el entorno declarado. Esas corridas sobrescribieron `perf/resultados/despues-1usuario_stats.csv` y `despues_stats.csv`. Las líneas de §10.1 son las del 22-nov, copiadas antes de que se sobrescribieran.
+
