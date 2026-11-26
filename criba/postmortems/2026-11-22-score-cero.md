@@ -43,7 +43,7 @@ Dos causas, y hacen falta las dos:
 | Arreglo del ejecutor: error → trabajo en `error` con motivo, sin score | constructor | hecho |
 | Quitar el tope de tokens del staging y documentar por qué no es un tope de gasto | Víctor | hecho; un tope de tokens de verdad es F7 y su pregunta abierta |
 | Remediación de datos: borrar los ceros falsos y reencolar | Víctor | hecho en el staging (`staging/remediar_incidente_001.sql`) |
-| Quién reencola los trabajos en `error` (reintentos) | PR-14 | pregunta abierta en `PLAN.md` |
+| Quién reencola los trabajos en `error` (reintentos) | PR-14 | pregunta abierta 17 de `PLAN.md` §9 |
 | Test de CI con el sobre real del CLI (issue #11) | escritor de tests | primer caso hecho; falta el resto del camino real |
 | Rama del hook `Stop` para el rol de producción | Víctor | pendiente |
 | Alerta: un pico de `error` en `metricas.trabajos_por_estado` | PR-15 | pendiente |
