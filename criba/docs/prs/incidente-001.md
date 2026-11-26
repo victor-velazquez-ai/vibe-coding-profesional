@@ -11,8 +11,8 @@ no es un hallazgo del análisis: es parte del guion.
 
 | Commit | Qué sembró | Por qué |
 |---|---|---|
-| `8ee8160` «cola: si el proveedor falla, el candidato no se queda sin fila en la vista» | el `score=0` en el camino de excepción de `una_pasada` | es un arreglo que suena razonable en su mensaje de commit y viola CA13; entró **sin un test que ejerciera el camino de error** (`git show --stat`: solo `ejecutor.py`) |
-| `8b594a9` «staging: tope de tokens de salida del proveedor, para cortar gasto» | `CLAUDE_CODE_MAX_OUTPUT_TOKENS=800` en `staging/staging.env` | un cambio de **operación**, desde un archivo de entorno que ningún test lee, que cambia la conducta del proveedor |
+| el commit «cola: si el proveedor falla, el candidato no se queda sin fila en la vista» «cola: si el proveedor falla, el candidato no se queda sin fila en la vista» | el `score=0` en el camino de excepción de `una_pasada` | es un arreglo que suena razonable en su mensaje de commit y viola CA13; entró **sin un test que ejerciera el camino de error** (`git show --stat`: solo `ejecutor.py`) |
+| el commit «staging: tope de tokens de salida del proveedor, para cortar gasto» «staging: tope de tokens de salida del proveedor, para cortar gasto» | `CLAUDE_CODE_MAX_OUTPUT_TOKENS=800` en `staging/staging.env` | un cambio de **operación**, desde un archivo de entorno que ningún test lee, que cambia la conducta del proveedor |
 
 Ninguno de los dos es un error de alguien del equipo. Los dos están aquí para que
 el ejercicio tenga un incidente con **dos causas** y para que se vea qué deja sin
@@ -28,7 +28,7 @@ lo dijo el modelo: lo escribía nuestro código.
 
 1. **La causa del cero (código, CA13).** El camino de excepción de `una_pasada`
    guardaba `score=0` con la razón «No se pudo evaluar automáticamente.»
-   (`app/match/cola/ejecutor.py`, commit `8ee8160`). Como `guardar_score` marca
+   (`app/match/cola/ejecutor.py`, el commit «cola: si el proveedor falla, el candidato no se queda sin fila en la vista»). Como `guardar_score` marca
    `estado="listo"` cuando el score no es `None` (`match_repo.py:267`), para la
    vista de la vacante y para `metricas.scores_por_vacante` **era un score de
    verdad**. Viola CA13 (`SPEC.md:91-93`, «Sin score, nunca un cero») y CA6
@@ -36,7 +36,7 @@ lo dijo el modelo: lo escribía nuestro código.
    escenario literal de F8: «si se guarda un 0, se viola CA13: un cero se lee
    como *no encaja*» (`docs/fallas.md:75`).
 2. **La causa de los fallos (operación, F7).** `CLAUDE_CODE_MAX_OUTPUT_TOKENS=800`
-   en `staging/staging.env` (commit `8b594a9`), que `_entorno()` hereda al
+   en `staging/staging.env` (el commit «staging: tope de tokens de salida del proveedor, para cortar gasto»), que `_entorno()` hereda al
    subproceso del CLI (`app/match/proveedor/cliente.py:215-219`, y no está en
    `VARIABLES_DEL_ANFITRION`, `:93-97`). Las 7 llamadas fallidas registraron
    `decision=codigo_de_salida` con latencias de 30–34 s: el CLI trabajó la
@@ -86,7 +86,7 @@ y no un adorno:
 
 ## Tests primero
 
-Los escribió el escritor de tests en `e234a93`, **antes** de este código, y aquí
+Los escribió el escritor de tests en el commit «test: el proveedor caído no escribe un cero ni pisa el score», **antes** de este código, y aquí
 no se tocó ni uno (ni se marcó ninguno con skip o xfail):
 
 - `tests/match/test_fallo_proveedor.py::test_un_error_tipado_del_proveedor_deja_el_trabajo_en_error_y_cero_filas_de_score`
@@ -114,7 +114,7 @@ Dos notas sobre cómo leer estos bloques, para que nadie los tome por editados:
   `-qq` y pytest **no imprime la línea de recuento**. Por eso el bloque 1 acaba
   en la última línea `FAILED` y el bloque 3 la trae: se corrió sin el `-q` extra.
 
-**1. En rojo, antes del código** (en `e234a93`, el commit del escritor de tests):
+**1. En rojo, antes del código** (en el commit «test: el proveedor caído no escribe un cero ni pisa el score», el commit del escritor de tests):
 
 ```
 $ uv run python -m pytest tests/match/test_fallo_proveedor.py tests/match/test_sobre_de_error_del_cli.py --tb=no -q
@@ -314,7 +314,7 @@ alcance antes de tocar nada y sin `COMMIT` automático. **Este PR no lo
 ejecuta.**
 
 **4. El postmortem, dentro de 48 h y sin nombres.** Lo que falló no es el 0: es
-que `8ee8160` entró sin un test que ejerciera el camino de error y que `8b594a9`
+que el commit «cola: si el proveedor falla, el candidato no se queda sin fila en la vista» entró sin un test que ejerciera el camino de error y que el commit «staging: tope de tokens de salida del proveedor, para cortar gasto»
 cambió la conducta del proveedor desde un archivo que ningún test lee. El primero
 ya tiene remedio en el repo (`tests/match/test_fallo_proveedor.py`); el segundo
 es la pregunta 2 de esta lista.
@@ -378,7 +378,7 @@ también en `PLAN.md` §9 como una fila nueva (junto a la 7, la de F7), es un
 cambio de ese archivo y lo decide quien pueda editarlo —el rol de producción
 o un PR dedicado a `PLAN.md`—, no el constructor de este PR.
 
-**I1 — decidido.** El hallazgo es real: el commit `6a15acd` mezcla el arreglo
+**I1 — decidido.** El hallazgo es real: el commit «comportamiento: un fallo del proveedor nunca se convierte en un score» mezcla el arreglo
 de código (`ejecutor.py`) y el de `staging/staging.env` en una sola pieza, así
 que revertir uno sin el otro no es un solo comando. La forma más limpia de
 corregirlo sería separar ese commit en dos con un `git reset --soft` seguido
@@ -393,10 +393,10 @@ adivinarlo ni revertir las dos juntas:
 
 ```bash
 # revertir SOLO el código del ejecutor (deja staging.env como está):
-git checkout 6a15acd^ -- app/match/cola/ejecutor.py
+git checkout el commit «comportamiento: un fallo del proveedor nunca se convierte en un score»^ -- app/match/cola/ejecutor.py
 
 # revertir SOLO el cambio de staging.env (deja ejecutor.py como está):
-git checkout 6a15acd^ -- staging/staging.env
+git checkout el commit «comportamiento: un fallo del proveedor nunca se convierte en un score»^ -- staging/staging.env
 ```
 
 Y la recomendación para el siguiente incidente con dos causas, para que esto
@@ -409,14 +409,14 @@ en vez de solo quedar anotado en el postmortem (la lectura más estricta de
 fecha»): se queda en el PR, con esta justificación — a diferencia de exportar
 una variable a mano o reiniciar un proceso (los ejemplos de esa frase),
 `staging.env` es un archivo **versionado** del repo, y el valor que se quita
-lo puso un commit normal (`8b594a9`, «staging: tope de tokens…», sin pasar por
+lo puso un commit normal (el commit «staging: tope de tokens de salida del proveedor, para cortar gasto», «staging: tope de tokens…», sin pasar por
 ningún postmortem); tratarlo distinto solo porque esta vez el valor era
 incorrecto —en lugar de una decisión que alguien pueda discutir— trataría el
 canal de corrección como más estricto que el canal del error.
 
 ## Dependencias
 
-- `e234a93` (los tests, del escritor de tests), PR-06 (el bucle), PR-09 (el
+- el commit «test: el proveedor caído no escribe un cero ni pisa el score» (los tests, del escritor de tests), PR-06 (el bucle), PR-09 (el
   adaptador y sus errores tipados), PR-10 (el contexto de empresa desde la fila).
 - **Sin migración**, así que no hay lista de comprobación de bloqueo de F16.
 - **Sin dependencias nuevas**: `pyproject.toml` no se toca.
@@ -435,7 +435,7 @@ canal de corrección como más estricto que el canal del error.
   antes de reencender).
 - Diagnóstico de la sesión de triage del incidente 001 (rol de producción,
   22-nov-2026): las tres hipótesis, las refutaciones y el alcance.
-- Commits sembrados a propósito: `8ee8160` (el cero) y `8b594a9` (el tope de
+- Commits sembrados a propósito: el commit «cola: si el proveedor falla, el candidato no se queda sin fila en la vista» (el cero) y el commit «staging: tope de tokens de salida del proveedor, para cortar gasto» (el tope de
   tokens).
 - Ronda 1 de revisión (revisor-pr, 26-nov-2026, confianza 86): hallazgos I1,
   I2, M1, resueltos arriba. `.claude/agents/constructor.md` (la regla que
