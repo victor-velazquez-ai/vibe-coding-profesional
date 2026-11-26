@@ -339,3 +339,13 @@ medición (`34d8b52`); los tests son de `f57d507`.
 - `llamadas/2026-11-20-tomas.md` [00:16], [03:03], [03:57], [04:06]
 - `docs/arquitectura.md` §2 (HTML en servidor, fallback a recarga completa), §4
 - `PLAN.md` §4 (estructural contra comportamiento) y §6 (esta plantilla)
+
+## Ronda 1 de revisión (revisor-pr, claude-fable-5-1): 80 %, 1 B · 1 I · 1 M → corregir
+
+| Hallazgo | Qué se hizo |
+|---|---|
+| **B1** · la §10 de `perf/MEDICION.md` tenía números sin evidencia: un «antes con gzip» estimado como base de un porcentaje, un «−12 ms p50» que no salía de ninguna tabla, el perfil sin correr y la frase «corresponde exactamente al cambio nº 1» | **Corregido.** §10 rehecha solo con números medidos, cada uno con su archivo y su comando (`perf/resultados/perfil-despues.txt`, `perf/resultados/bytes-despues.txt`, `perf/resultados/despues*.csv`). Se declara que locust mide los cambios nº 1 y nº 3 juntos y que la corrección M1 no se volvió a medir. |
+| **I1** · la proyección de la lista (sin `cv_texto`) no tenía ningún test | **Corregido en `tests/`** por el escritor de tests: un guardia que captura las sentencias de `GET /vacantes/{id}` y falla si alguna selecciona `candidatos.cv_texto` fuera de `length(`. |
+| **M1** · `CandidatoDeLista.tiene_cv` (`largo_cv > 0`) divergía de `Candidato.tiene_cv` | **Corregido.** `Candidato.tiene_cv` pasa a `hybrid_property` y la lista la proyecta tal cual: la misma definición, calculada por Postgres. Test del escritor: un CV de solo espacios dice «sin CV» en la lista. |
+
+Suite tras la corrección: 231 tests, 0 fallas (230 passed, 1 xfailed).

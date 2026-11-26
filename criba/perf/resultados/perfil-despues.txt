@@ -1,0 +1,165 @@
+Base: postgresql+pg8000://criba:criba@localhost:5444/criba_perf
+Muestras por escenario: 40 (más 5 de calentamiento)
+Peticiones en proceso con TestClient: sin loopback y sin uvicorn.
+
+### CA5 · marcus abre la vacante de 500
+    marcus GET /vacantes/1 · 500 filas renderizadas
+    por qué está medido: la petición del SLO: reclutador, 500 filas, score y acciones de escritura
+
+    bytes de la respuesta         838,619
+    bytes por fila                  1,677
+    consultas por petición              5 (min) … 5 (max)
+
+    fase         p50 ms   p95 ms   p99 ms    media  % del p50
+    --------------------------------------------------------
+    total          64.6     88.4     95.1     68.6       100%
+    SQL            30.4     38.9     44.9     31.7        47%
+    render          6.8      9.2     31.2      7.7        11%
+    resto          27.1     37.4     53.6     29.1        42%
+
+    veredicto del presupuesto de CA5 (300 ms sobre el p95): DENTRO
+
+    consultas, media de las 40 muestras:
+         14.2 ms  scores_de_vacante · los scores ya guardados
+         12.2 ms  candidatos_de_vacante · la lista de la vista
+          2.2 ms  candidatos_sin_postular_a · el <select> de «añadir»
+          1.6 ms  empresa_activada · la comprobación de D7/CA3
+          1.5 ms  vacante · la cabecera de la página
+    sentencias repetidas dentro de una misma petición (señal de N+1): ninguna
+
+### control · hiring manager, 500 filas sin score ni textarea
+    hm.northstar GET /vacantes/1 · 500 filas renderizadas
+    por qué está medido: CA18 le quita score y escritura: mismas 500 filas con mucho menos HTML por fila
+
+    bytes de la respuesta         328,630
+    bytes por fila                    657
+    consultas por petición              2 (min) … 2 (max)
+
+    fase         p50 ms   p95 ms   p99 ms    media  % del p50
+    --------------------------------------------------------
+    total          31.7     40.5     59.4     33.5       100%
+    SQL            13.1     15.0     22.0     13.4        41%
+    render          4.0      4.7      5.6      4.1        13%
+    resto          14.7     21.5     41.7     16.0        46%
+
+    veredicto del presupuesto de CA5 (300 ms sobre el p95): DENTRO
+
+    consultas, media de las 40 muestras:
+         12.1 ms  candidatos_de_vacante · la lista de la vista
+          1.3 ms  vacante · la cabecera de la página
+    sentencias repetidas dentro de una misma petición (señal de N+1): ninguna
+
+### control · fragmento de Match, 500 filas en 3 columnas
+    marcus GET /match/vacantes/1/lista · 500 filas renderizadas
+    por qué está medido: mismas 500 filas y casi las mismas consultas, sin CV ni formularios
+
+    bytes de la respuesta         138,238
+    bytes por fila                    276
+    consultas por petición              4 (min) … 4 (max)
+
+    fase         p50 ms   p95 ms   p99 ms    media  % del p50
+    --------------------------------------------------------
+    total          44.3     62.1     72.2     47.0       100%
+    SQL            27.6     34.9     41.6     28.6        62%
+    render          1.3      1.6      1.6      1.3         3%
+    resto          15.5     19.7     43.1     17.1        35%
+
+    veredicto del presupuesto de CA5 (300 ms sobre el p95): DENTRO
+
+    consultas, media de las 40 muestras:
+         13.4 ms  scores_de_vacante · los scores ya guardados
+         12.2 ms  candidatos_de_vacante · la lista de la vista
+          1.7 ms  empresa_activada · la comprobación de D7/CA3
+          1.3 ms  vacante · la cabecera de la página
+    sentencias repetidas dentro de una misma petición (señal de N+1): ninguna
+
+### control · la misma vista con 4 filas
+    marcus GET /vacantes/2 · 4 filas renderizadas
+    por qué está medido: separa el costo fijo de la petición del costo por fila
+
+    bytes de la respuesta          81,487
+    bytes por fila                 20,371
+    consultas por petición              5 (min) … 5 (max)
+
+    fase         p50 ms   p95 ms   p99 ms    media  % del p50
+    --------------------------------------------------------
+    total          32.8     49.0     55.8     34.9       100%
+    SQL            19.3     31.1     37.1     20.6        59%
+    render          1.9      2.3     25.9      2.5         6%
+    resto          11.2     14.6     15.9     11.8        34%
+
+    veredicto del presupuesto de CA5 (300 ms sobre el p95): DENTRO
+
+    consultas, media de las 40 muestras:
+         15.0 ms  candidatos_sin_postular_a · el <select> de «añadir»
+          1.7 ms  candidatos_de_vacante · la lista de la vista
+          1.4 ms  scores_de_vacante · los scores ya guardados
+          1.3 ms  vacante · la cabecera de la página
+          1.2 ms  empresa_activada · la comprobación de D7/CA3
+    sentencias repetidas dentro de una misma petición (señal de N+1): ninguna
+
+### De qué está hecho el cuerpo de la respuesta
+
+    filas de la vacante 1: 500
+    suma de `cv_texto` de esas filas: 542,091 caracteres
+    `_candidatos.html` mete `cv_texto` completo dentro de un <textarea> por fila,
+    así que esos caracteres son bytes de la respuesta de cada apertura de vacante.
+
+### Sondeo · cada consulta de la vista de CA5: la app contra Postgres
+
+    consulta                                                     app   Postgres  fuera de PG
+    ----------------------------------------------------------------------------------------
+    scores_de_vacante · los scores ya guardados               14.2ms     0.09ms          99%
+    candidatos_de_vacante · la lista de la vista              12.2ms     3.35ms          73%
+    candidatos_sin_postular_a · el <select> de «añadir»        2.2ms     0.29ms          87%
+    empresa_activada · la comprobación de D7/CA3               1.6ms     0.01ms          99%
+    vacante · la cabecera de la página                         1.5ms     0.01ms          99%
+    suma de las consultas de la petición                      31.7ms     3.75ms          88%
+
+### Sondeo · los ~40 ms de «SQL» de la lista, de dentro hacia fuera
+
+    1 · Postgres, Execution Time de EXPLAIN ANALYZE                  3.6 ms
+    2 · driver pg8000, cursor crudo, fila completa                  12.0 ms
+    3 · driver pg8000, solo las columnas que la lista muestra        8.1 ms
+    4 · RepositorioEmpresa.candidatos_de_vacante (lo que corre)     15.3 ms
+
+    fuera de Postgres: 11.7 ms de los 15.3 ms (76 %)
+    atribuible al texto del CV en el cursor crudo: 3.9 ms
+
+    el plan de Postgres, para que el número 1 no sea una afirmación:
+      Sort  (cost=654.34..655.57 rows=494 width=124) (actual time=3.531..3.548 rows=500 loops=1)
+        Sort Key: postulaciones.creada_en DESC, postulaciones.id DESC
+        Sort Method: quicksort  Memory: 102kB
+        Buffers: shared hit=587
+        ->  Hash Join  (cost=18.88..632.23 rows=494 width=124) (actual time=0.076..3.364 rows=500 loops=1)
+              Hash Cond: (candidatos.id = postulaciones.candidato_id)
+              Buffers: shared hit=587
+              ->  Seq Scan on candidatos  (cost=0.00..88.38 rows=507 width=1174) (actual time=0.003..0.098 rows=507 loops=1)
+                    Filter: (empresa_id = 1)
+                    Rows Removed by Filter: 3
+                    Buffers: shared hit=82
+              ->  Hash  (cost=12.66..12.66 rows=497 width=34) (actual time=0.060..0.060 rows=500 loops=1)
+                    Buckets: 1024  Batches: 1  Memory Usage: 44kB
+                    Buffers: shared hit=5
+                    ->  Seq Scan on postulaciones  (cost=0.00..12.66 rows=497 width=34) (actual time=0.002..0.034 rows=500 loops=1)
+                          Filter: ((empresa_id = 1) AND (vacante_id = 1))
+                          Rows Removed by Filter: 11
+                          Buffers: shared hit=5
+              SubPlan 1
+                ->  Aggregate  (cost=1.04..1.05 rows=1 width=8) (actual time=0.001..0.001 rows=1 loops=500)
+                      Buffers: shared hit=500
+                      ->  Seq Scan on notas_entrevista  (cost=0.00..1.04 rows=1 width=4) (actual time=0.000..0.000 rows=0 loops=500)
+                            Filter: (postulacion_id = postulaciones.id)
+                            Rows Removed by Filter: 3
+                            Buffers: shared hit=500
+      Planning:
+        Buffers: shared hit=6
+      Planning Time: 0.153 ms
+      Execution Time: 3.595 ms
+
+### Sondeo · el <select> de «añadir un candidato», que CA5 no ve
+
+    vacante 1:    7 filas en el <select>      1.9 ms
+    vacante 2:  503 filas en el <select>     17.0 ms
+    vacante 3:  503 filas en el <select>     16.4 ms
+    candidatos de Northstar en la base de medición: 507
